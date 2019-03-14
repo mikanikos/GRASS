@@ -1,5 +1,4 @@
 #include <grass.h>
-#include <netinet/in.h>
 
 /*
  * Send a file to the server as its own thread

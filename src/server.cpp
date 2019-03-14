@@ -125,7 +125,7 @@ int main()
     s_addr.sin_port = htons(atoi(port));
 
     // BIND
-    if ((bind(sock, (struct sockadrr_in *)&s_addr, sizeof(s_addr))) < 0) {
+    if ((bind(sock, (struct sockaddr *)&s_addr, sizeof(s_addr))) < 0) {
         perror("bind failed");
         exit(0);
     }
@@ -144,7 +144,7 @@ int main()
     {
         int sock_new;
 
-        sock_new = accept(sock, (struct sockaddr_in *)&c_addr, (socklen_t *)&c_addr_len);
+        sock_new = accept(sock, (struct sockaddr *)&c_addr, (socklen_t *)&c_addr_len);
         if (sock_new < 0) {
             perror("accept failed");   
             exit(0);
