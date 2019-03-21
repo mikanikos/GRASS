@@ -1,5 +1,5 @@
 #include <grass.h>
-#include "error.h"
+#include <error.h>
 #include <ctype.h>
 #include <vector>
 #include <string>
