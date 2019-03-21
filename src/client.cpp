@@ -72,26 +72,28 @@ int main(int argc, char **argv)
         exit(0);
     }
 
-    char buff[1024]; 
-    int n; 
-    while (true) { 
-        bzero(buff, sizeof(buff)); 
+    char buff[1024];
+    int n;
+    while (true)
+    {
+        bzero(buff, sizeof(buff));
         printf("grass> ");
-        n = 0; 
-        while ((buff[n++] = getchar()) != '\n') 
-            ; 
-        
-        write(sock, buff, sizeof(buff)); 
-        
-        if ((strncmp(buff, "exit", 4)) == 0) { 
-            printf("Logged out\n"); 
-            break; 
-        } 
-        
-        bzero(buff, sizeof(buff)); 
-        read(sock, buff, sizeof(buff)); 
-        printf("%s", buff); 
-    } 
+        n = 0;
+        while ((buff[n++] = getchar()) != '\n')
+            ;
+
+        write(sock, buff, sizeof(buff));
+
+        if ((strncmp(buff, "exit", 4)) == 0)
+        {
+            printf("Logged out\n");
+            break;
+        }
+
+        bzero(buff, sizeof(buff));
+        read(sock, buff, sizeof(buff));
+        printf("%s", buff);
+    }
 
     close(sock);
 }
