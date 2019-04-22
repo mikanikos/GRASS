@@ -19,8 +19,8 @@
 
 struct User
 {
-    const char *uname;
-    const char *pass;
+    char *uname;
+    char *pass;
 
     bool isLoggedIn;
 };

@@ -1,5 +1,6 @@
 #include <grass.h>
 #include <sys/wait.h>
+#include <signal.h> 
 
 /*
  * Send a file to the server as its own thread
@@ -35,23 +36,31 @@ void search(char *pattern)
     // TODO
 }
 
+// catch ctrl c to not stop the program
+void signalHandler(int sig_num) 
+{  
+} 
+
+
 int main(int argc, char **argv)
 {
     // TODO:
     // Make a short REPL to send commands to the server
     // Make sure to also handle the special cases of a get and put command
 
+    signal(SIGINT, signalHandler);
+
     int sock;
 
     if (argc != 3)
-        exit(0);
+        exit(1);
 
     // CREATION
     sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0)
     {
-        perror("creation failed");
-        exit(0);
+        printf("creation failed");
+        exit(1);
     }
 
     struct sockaddr_in s_addr;
@@ -61,15 +70,15 @@ int main(int argc, char **argv)
 
     if (inet_pton(AF_INET, argv[1], &s_addr.sin_addr) < 0)
     {
-        perror("invalid address");
-        exit(0);
+        printf("invalid address");
+        exit(1);
     }
 
     // CONNECTION
     if (connect(sock, (struct sockaddr *)&s_addr, sizeof(s_addr)) < 0)
     {
-        perror("connect failed");
-        exit(0);
+        printf("connect failed");
+        exit(1);
     }
 
     char buff[1024];
@@ -79,14 +88,27 @@ int main(int argc, char **argv)
         bzero(buff, sizeof(buff));
         printf("grass> ");
         n = 0;
-        while ((buff[n++] = getchar()) != '\n')
-            ;
+
+        char c = getchar();
+        while (c != '\n' && c != EOF) {
+            buff[n] = c;
+            n++;
+            c = getchar();
+        }
+
+        // ctrl d catch
+        if (c == EOF) {
+            strcpy(buff, "exit");
+            write(sock, buff, sizeof(buff));
+            printf("\nExit successfully\n");  
+            break;
+        }
 
         write(sock, buff, sizeof(buff));
 
-        if ((strncmp(buff, "exit", 4)) == 0)
+        if ((strcmp(buff, "exit")) == 0)
         {
-            printf("Logged out\n");
+            printf("\nExit successfully\n");
             break;
         }
 
@@ -96,4 +118,5 @@ int main(int argc, char **argv)
     }
 
     close(sock);
+    return 0;
 }
