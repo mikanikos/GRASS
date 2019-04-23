@@ -19,6 +19,8 @@ using namespace std;
 
 #define MAX_THREADS 30
 
+#define PATH_MAX 128
+
 #define IS_DIRECTORY 2
 #define IS_FILE 1
 #define UNKNOWN_PATH 0
@@ -30,7 +32,7 @@ map<int, struct User> active_Users;
 list<struct User> userList;
 
 char port[7];
-char curr_dir[10];
+char curr_dir[PATH_MAX];
 
 // Handle threads
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
@@ -273,9 +275,23 @@ int do_cd(vector<string> name, int sock)
         return 1;
     }
 
+    // check path length
+    if (name[1].length() > PATH_MAX) {
+        strcpy(res, ERR_PATH_LONG);
+        write(sock, res, sizeof(res));
+        return 1;
+    }
+
     // check if the path exists and it's a directory
     if (check_path(name[1]) == IS_DIRECTORY)
     {
+        // check permission of path
+        if (strstr(realpath(name[1].c_str(), NULL), curr_dir) == NULL) {
+            strcpy(res, ERR_ACCESS_DENIED);
+            write(sock, res, sizeof(res));
+            return 1;
+        }
+
         chdir(name[1].c_str());
         write(sock, "", sizeof(""));
     }
@@ -297,6 +313,13 @@ int do_mkdir(vector<string> name, int sock)
         return 1;
     }
 
+    // check path length
+    if (name[1].length() > PATH_MAX) {
+        strcpy(res, ERR_PATH_LONG);
+        write(sock, res, sizeof(res));
+        return 1;
+    }
+
     string command;
     int check = check_path(name[1]);
     
@@ -307,6 +330,26 @@ int do_mkdir(vector<string> name, int sock)
     }
     else
     {
+
+        string parent_path = name[1];
+
+        while (parent_path.back() == '\\' || parent_path.back() == '/') {
+            parent_path = parent_path.substr(0, parent_path.size()-1);
+        }
+
+        size_t pos = parent_path.find_last_of("/\\");
+        
+        if (pos != string::npos) {
+            parent_path = parent_path.substr(0, pos).c_str();
+            
+            // check permission of path
+            if (strstr(realpath(parent_path.c_str(), NULL), curr_dir) == NULL) {
+                strcpy(res, ERR_ACCESS_DENIED);
+                write(sock, res, sizeof(res));
+                return 1;
+            }
+        }
+
         command = name[0] + " " + name[1];
         run_command(command.c_str(), sock);
     }
@@ -324,28 +367,32 @@ int do_rm(vector<string> name, int sock)
         return 1;
     }
 
+    // check path length
+    if (name[1].length() > PATH_MAX) {
+        strcpy(res, ERR_PATH_LONG);
+        write(sock, res, sizeof(res));
+        return 1;
+    }
+
     string command;
     int check = check_path(name[1]);
 
     // if file, remove file
-    if (check == IS_FILE)
+    if (check == IS_FILE || check == IS_DIRECTORY)
     {
-        command = name[0] + " " + name[1];
+        // check permission of path
+        if (strstr(realpath(name[1].c_str(), NULL), curr_dir) == NULL) {
+            strcpy(res, ERR_ACCESS_DENIED);
+            write(sock, res, sizeof(res));
+            return 1;
+        }
+
+        command = name[0] + " -r " + name[1];
         run_command(command.c_str(), sock);
     }
     else
     {
-        // if directory, change command and remove directory
-        if (check == IS_DIRECTORY)
-        {
-            name[0] = "rmdir";
-            command = name[0] + " " + name[1];
-            run_command(command.c_str(), sock);
-        }
-        else
-        {
-            write(sock, ERR_UNKNOWN_PATH, sizeof(ERR_UNKNOWN_PATH));
-        }
+        write(sock, ERR_UNKNOWN_PATH, sizeof(ERR_UNKNOWN_PATH));
     }
     return 0;
 }
@@ -521,7 +568,7 @@ void parse_grass()
                     t = strtok(NULL, "\n");
                     if (t != NULL)
                     {
-                        strcpy(curr_dir, t);
+                        strcpy(curr_dir, realpath(t, NULL));
                     }
                 }
 

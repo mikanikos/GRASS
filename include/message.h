@@ -6,6 +6,8 @@
 #define ERR_UNKNOWN_CMD "Error: unknown command\n"
 #define ERR_UNKNOWN_PATH "Error: path doesn't exist\n"
 #define ERR_PATH_EXISTS "Error: path already exists\n"
+#define ERR_PATH_LONG "Error: the path is too long\n"
+#define ERR_ACCESS_DENIED "Error: access denied!\n"
 #define ISSUE_LOGIN_MES "You need to authenticate first, please issue the login command\n"
 
 #endif

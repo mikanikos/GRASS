@@ -1,6 +1,16 @@
 #include <grass.h>
 #include <sys/wait.h>
-#include <signal.h> 
+#include <signal.h>
+#include <sstream>
+#include <string>
+#include <fstream>
+#include <stdlib.h>
+#include <stdio.h>
+
+using namespace std;
+
+
+static bool automated_mode = false;
 
 /*
  * Send a file to the server as its own thread
@@ -37,10 +47,9 @@ void search(char *pattern)
 }
 
 // catch ctrl c to not stop the program
-void signalHandler(int sig_num) 
-{  
-} 
-
+void signalHandler(int sig_num)
+{
+}
 
 int main(int argc, char **argv)
 {
@@ -52,8 +61,15 @@ int main(int argc, char **argv)
 
     int sock;
 
-    if (argc != 3)
+    if (argc == 5)
+    {
+        automated_mode = true;
+    }
+    else if (argc != 3)
+    {
+        printf("Error: wrong number of arguments passed\n");
         exit(1);
+    }
 
     // CREATION
     sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -83,38 +99,78 @@ int main(int argc, char **argv)
 
     char buff[1024];
     int n;
-    while (true)
+
+    if (automated_mode)
     {
-        bzero(buff, sizeof(buff));
-        printf("grass> ");
-        n = 0;
+        string line;
 
-        char c = getchar();
-        while (c != '\n' && c != EOF) {
-            buff[n] = c;
-            n++;
-            c = getchar();
+        ifstream infile(argv[3]);
+        ofstream outfile(argv[4]);
+        
+        if (!infile.is_open() || !outfile.is_open()) {
+            printf("Error in opening files");
+            exit(1);
         }
 
-        // ctrl d catch
-        if (c == EOF) {
-            strcpy(buff, "exit");
-            write(sock, buff, sizeof(buff));
-            printf("\nExit successfully\n");  
-            break;
-        }
-
-        write(sock, buff, sizeof(buff));
-
-        if ((strcmp(buff, "exit")) == 0)
+        while (getline(infile, line))
         {
-            printf("\nExit successfully\n");
-            break;
-        }
+            bzero(buff, sizeof(buff));
 
-        bzero(buff, sizeof(buff));
-        read(sock, buff, sizeof(buff));
-        printf("%s", buff);
+            strcpy(buff, line.c_str());
+            
+            write(sock, buff, sizeof(buff));
+
+            if ((strcmp(buff, "exit")) == 0)
+            {
+                outfile << "Exit successfully\n";
+                break;
+            }
+
+            bzero(buff, sizeof(buff));
+            read(sock, buff, sizeof(buff));
+            outfile << buff;
+
+        }
+        infile.close();
+        outfile.close();
+    }
+    else
+    {
+        while (true)
+        {
+            bzero(buff, sizeof(buff));
+            printf("grass> ");
+            n = 0;
+
+            char c = getchar();
+            while (c != '\n' && c != EOF)
+            {
+                buff[n] = c;
+                n++;
+                c = getchar();
+            }
+
+            // ctrl d catch
+            if (c == EOF)
+            {
+                strcpy(buff, "exit");
+                write(sock, buff, sizeof(buff));
+                printf("\nExit successfully\n");
+                break;
+            }
+
+            write(sock, buff, sizeof(buff));
+
+            if ((strcmp(buff, "exit")) == 0)
+            {
+                printf("\nExit successfully\n");
+                break;
+            }
+
+            bzero(buff, sizeof(buff));
+            read(sock, buff, sizeof(buff));
+            printf("%s", buff);
+        }
     }
 
     close(sock);
