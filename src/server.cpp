@@ -128,6 +128,15 @@ int do_login(vector<string> name, int sock)
 {
     char res[1024];
 
+    // user alredy logged in has to logout for re-issuing this command
+    map<int, struct User>::iterator it;
+    it = active_Users.find(sock);
+    if (it != active_Users.end() && (it->second).isLoggedIn) {
+        strcpy(res, "You're alreaddy logged in\n");
+        write(sock, res, sizeof(res));
+        return 1;
+    }
+
     // search for user in paramters of config file 
     for (auto const& it : userList) {
         if (strcmp(it.uname, name[1].c_str()) == 0) {
@@ -140,7 +149,7 @@ int do_login(vector<string> name, int sock)
     }
 
     // if the user is not in the config file, no access
-    strcpy(res, "You are not allowed to access the system\n");
+    strcpy(res, ERR_ACCESS_DENIED);
     write(sock, res, sizeof(res));
     return 0;
 }
@@ -161,7 +170,7 @@ int do_pass(vector<string> name, int sock)
         }
         // wrong password
         else {
-            strcpy(res, "Wrong password\n");
+            strcpy(res, "Error: wrong password\n");
             write(sock, res, sizeof(res));
         }
     }
@@ -198,6 +207,7 @@ int do_logout(vector<string> name, int sock)
 
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
+        active_Users.erase(sock);
         strcpy(res, ISSUE_LOGIN_MES);
         write(sock, res, sizeof(res));
         return 1;
@@ -237,6 +247,7 @@ int do_ls(vector<string> name, int sock)
 
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
+        active_Users.erase(sock);
         strcpy(res, ISSUE_LOGIN_MES);
         write(sock, res, sizeof(res));
         return 1;
@@ -255,6 +266,7 @@ int do_date(vector<string> name, int sock)
 
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
+        active_Users.erase(sock);
         strcpy(res, ISSUE_LOGIN_MES);
         write(sock, res, sizeof(res));
         return 1;
@@ -270,6 +282,7 @@ int do_cd(vector<string> name, int sock)
 
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
+        active_Users.erase(sock);
         strcpy(res, ISSUE_LOGIN_MES);
         write(sock, res, sizeof(res));
         return 1;
@@ -308,6 +321,7 @@ int do_mkdir(vector<string> name, int sock)
 
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
+        active_Users.erase(sock);
         strcpy(res, ISSUE_LOGIN_MES);
         write(sock, res, sizeof(res));
         return 1;
@@ -362,6 +376,7 @@ int do_rm(vector<string> name, int sock)
 
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
+        active_Users.erase(sock);
         strcpy(res, ISSUE_LOGIN_MES);
         write(sock, res, sizeof(res));
         return 1;
@@ -421,6 +436,7 @@ int do_w(vector<string> name, int sock)
 
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
+        active_Users.erase(sock);
         strcpy(res, ISSUE_LOGIN_MES);
         write(sock, res, sizeof(res));
         return 1;
@@ -445,6 +461,7 @@ int do_whoami(vector<string> name, int sock)
 
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
+        active_Users.erase(sock);
         strcpy(res, ISSUE_LOGIN_MES);
         write(sock, res, sizeof(res));
         return 1;
