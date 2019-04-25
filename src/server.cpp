@@ -10,12 +10,12 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <list> 
-#include <map> 
+#include <list>
+#include <map>
 #include <pthread.h>
 using namespace std;
 
-#define NB_COMMANDS 11
+#define NB_COMMANDS 12
 
 #define MAX_THREADS 30
 
@@ -45,7 +45,7 @@ int do_cd(vector<string>, int);
 int do_mkdir(vector<string>, int);
 int do_rm(vector<string>, int);
 //int do_get(vector<string> name, int sock);
-//int do_put(vector<string> name, int sock);
+int do_put(vector<string> name, int sock);
 //int do_grep(vector<string> name, int sock);
 int do_date(vector<string>, int);
 int do_whoami(vector<string>, int);
@@ -71,7 +71,7 @@ struct shell_map shell_cmds[NB_COMMANDS] = {
     {"mkdir", do_mkdir, 1},
     {"rm", do_rm, 1},
     // {"get", do_get, 1},
-    // {"put", do_put, 2},
+    {"put", do_put, 2},
     //{"grep", do_grep, 1},
     {"date", do_date, 0},
     {"whoami", do_whoami, 0},
@@ -79,7 +79,6 @@ struct shell_map shell_cmds[NB_COMMANDS] = {
     {"logout", do_logout, 0},
     // {"exit", do_exit, 0},
 };
-
 
 // Helper function to run commands in unix.
 void run_command(const char *command, int sock)
@@ -126,9 +125,11 @@ int do_login(vector<string> name, int sock)
 {
     char res[1024];
 
-    // search for user in paramters of config file 
-    for (auto const& it : userList) {
-        if (strcmp(it.uname, name[1].c_str()) == 0) {
+    // search for user in paramters of config file
+    for (auto const &it : userList)
+    {
+        if (strcmp(it.uname, name[1].c_str()) == 0)
+        {
             // add to map in order to keep track the activity
             active_Users[sock] = it;
             strcpy(res, "User found! Use pass command to access the system\n");
@@ -147,45 +148,54 @@ int do_pass(vector<string> name, int sock)
 {
     char res[1024];
     map<int, struct User>::iterator it;
-    
-    // search for the user who has tried to login 
+
+    // search for the user who has tried to login
     it = active_Users.find(sock);
-    if (it != active_Users.end()) {
+    if (it != active_Users.end())
+    {
         // password found, authentication is successful
-        if (strcmp((it->second).pass, name[1].c_str()) == 0) {
+        if (strcmp((it->second).pass, name[1].c_str()) == 0)
+        {
             (it->second).isLoggedIn = true;
             strcpy(res, "You're authenticated!\n");
             write(sock, res, sizeof(res));
         }
         // wrong password
-        else {
+        else
+        {
             strcpy(res, "Wrong password\n");
             write(sock, res, sizeof(res));
         }
     }
     // the user has to do login before pass
-    else {
+    else
+    {
         strcpy(res, ISSUE_LOGIN_MES);
         write(sock, res, sizeof(res));
     }
     return 0;
 }
 
-// check if the user is allowed to execute/access, returns true if yes 
-int check_authentication(int sock) {
+// check if the user is allowed to execute/access, returns true if yes
+int check_authentication(int sock)
+{
     map<int, struct User>::iterator it;
-     
-    // search the user in the map, if not present the user is not authnticated yet (no login command), otherwise check if he completed the authentication with pass 
+
+    // search the user in the map, if not present the user is not authnticated yet (no login command), otherwise check if he completed the authentication with pass
     it = active_Users.find(sock);
-    if (it != active_Users.end()) {
-        if ((it->second).isLoggedIn) {
+    if (it != active_Users.end())
+    {
+        if ((it->second).isLoggedIn)
+        {
             return true;
         }
-        else {
+        else
+        {
             return false;
         }
     }
-    else {
+    else
+    {
         return false;
     }
 }
@@ -195,7 +205,8 @@ int do_logout(vector<string> name, int sock)
     char res[1024] = "";
 
     // check if the user is allowed to execute the command
-    if (!check_authentication(sock)) {
+    if (!check_authentication(sock))
+    {
         strcpy(res, ISSUE_LOGIN_MES);
         write(sock, res, sizeof(res));
         return 1;
@@ -204,14 +215,16 @@ int do_logout(vector<string> name, int sock)
     // find the user accoding to the socket fd and set the loggedin status to false
     map<int, struct User>::iterator it;
     it = active_Users.find(sock);
-    if (it != active_Users.end()) {
+    if (it != active_Users.end())
+    {
         (it->second).isLoggedIn = false;
         active_Users.erase(sock);
         strcpy(res, "You've logged out\n");
         write(sock, res, sizeof(res));
     }
     // no user found, there's a problem
-    else {
+    else
+    {
         strcpy(res, "No user found: did you hack the system?\n");
         write(sock, res, sizeof(res));
     }
@@ -234,7 +247,8 @@ int do_ls(vector<string> name, int sock)
     char res[1024];
 
     // check if the user is allowed to execute the command
-    if (!check_authentication(sock)) {
+    if (!check_authentication(sock))
+    {
         strcpy(res, ISSUE_LOGIN_MES);
         write(sock, res, sizeof(res));
         return 1;
@@ -252,7 +266,8 @@ int do_date(vector<string> name, int sock)
     char res[1024];
 
     // check if the user is allowed to execute the command
-    if (!check_authentication(sock)) {
+    if (!check_authentication(sock))
+    {
         strcpy(res, ISSUE_LOGIN_MES);
         write(sock, res, sizeof(res));
         return 1;
@@ -267,7 +282,8 @@ int do_cd(vector<string> name, int sock)
     char res[1024];
 
     // check if the user is allowed to execute the command
-    if (!check_authentication(sock)) {
+    if (!check_authentication(sock))
+    {
         strcpy(res, ISSUE_LOGIN_MES);
         write(sock, res, sizeof(res));
         return 1;
@@ -291,7 +307,8 @@ int do_mkdir(vector<string> name, int sock)
     char res[1024];
 
     // check if the user is allowed to execute the command
-    if (!check_authentication(sock)) {
+    if (!check_authentication(sock))
+    {
         strcpy(res, ISSUE_LOGIN_MES);
         write(sock, res, sizeof(res));
         return 1;
@@ -299,7 +316,7 @@ int do_mkdir(vector<string> name, int sock)
 
     string command;
     int check = check_path(name[1]);
-    
+
     // check if directory already exists
     if (check == IS_DIRECTORY)
     {
@@ -318,7 +335,8 @@ int do_rm(vector<string> name, int sock)
     char res[1024];
 
     // check if the user is allowed to execute the command
-    if (!check_authentication(sock)) {
+    if (!check_authentication(sock))
+    {
         strcpy(res, ISSUE_LOGIN_MES);
         write(sock, res, sizeof(res));
         return 1;
@@ -373,15 +391,18 @@ int do_w(vector<string> name, int sock)
     char res[1024] = "";
 
     // check if the user is allowed to execute the command
-    if (!check_authentication(sock)) {
+    if (!check_authentication(sock))
+    {
         strcpy(res, ISSUE_LOGIN_MES);
         write(sock, res, sizeof(res));
         return 1;
     }
 
     // go through all the active users in the system and check who's loggedin
-    for (auto const& it : active_Users) {
-        if ((it.second).isLoggedIn) {
+    for (auto const &it : active_Users)
+    {
+        if ((it.second).isLoggedIn)
+        {
             strcat(res, (it.second).uname);
             strcat(res, " ");
         }
@@ -397,26 +418,141 @@ int do_whoami(vector<string> name, int sock)
     char res[1024] = "";
 
     // check if the user is allowed to execute the command
-    if (!check_authentication(sock)) {
+    if (!check_authentication(sock))
+    {
         strcpy(res, ISSUE_LOGIN_MES);
         write(sock, res, sizeof(res));
         return 1;
     }
 
-    // retrun username correspeonding to the socket fd 
+    // retrun username correspeonding to the socket fd
     map<int, struct User>::iterator it;
     it = active_Users.find(sock);
-    if (it != active_Users.end()) {
+    if (it != active_Users.end())
+    {
         strcpy(res, (it->second).uname);
         strcat(res, "\n");
         write(sock, res, sizeof(res));
     }
-    // if user not found, it means that the user is not authenticated but it still accessed the command execution statement (there's a problem) 
-    else {
+    // if user not found, it means that the user is not authenticated but it still accessed the command execution statement (there's a problem)
+    else
+    {
         strcpy(res, "We didn't find you: did you hack the system?\n");
         write(sock, res, sizeof(res));
     }
 
+    return 0;
+}
+
+int do_put(vector<string> name, int sock)
+{
+    char res[1024];
+
+    // check if the user is allowed to execute the command
+    if (!check_authentication(sock))
+    {
+        strcpy(res, ISSUE_LOGIN_MES);
+        write(sock, res, sizeof(res));
+        return 1;
+    }
+
+    // check if the filename is not too long
+    if (strlen(name[1].c_str()) > 128)
+    {
+        strcpy(res, ERR_PATH_TOO_LONG);
+        write(sock, res, sizeof(res));
+        return 1;
+    }
+
+    // choose a port and send it to the client
+    strcpy(res, "put port: ");
+    strcat(res, "31337\n"); // TODO: choose random port
+    write(sock, res, sizeof(res));
+    bzero(res, 1024);
+
+    int sockfd;
+
+    // CREATION
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0)
+    {
+        printf("creation failed\n");
+        fflush(stdout);
+        strcpy(res, ERR_TRANSFER);
+        write(sock, res, sizeof(res));
+        return 1;
+    }
+
+    struct sockaddr_in s_addr;
+    s_addr.sin_family = AF_INET;
+    s_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    s_addr.sin_port = htons(31337); // TODO: choose random port
+    if (inet_pton(AF_INET, "127.0.0.1", &s_addr.sin_addr) < 0)
+    {
+        printf("invalid address\n");
+        fflush(stdout);
+        strcpy(res, ERR_TRANSFER);
+        write(sock, res, sizeof(res));
+        return 1;
+    }
+    // CONNECTION
+    // try to connect until the client is listening to the port
+    while (connect(sockfd, (struct sockaddr *)&s_addr, sizeof(s_addr)) < 0)
+    {
+    }
+
+    char revbuf[1024];
+    const char *f_name = (name[1]).c_str();
+    FILE *fp = fopen(f_name, "a");
+    if (fp == NULL)
+    {
+        strcpy(res, ERR_TRANSFER);
+        write(sock, res, sizeof(res));
+        close(sockfd);
+        return 1;
+    }
+    else
+    {
+        bzero(revbuf, 1024);
+        int f_block_sz = 0;
+        int total_size = 0;
+        int success = 0;
+
+        while (f_block_sz = recv(sockfd, revbuf, 1024, 0))
+        {
+            if (f_block_sz < 0)
+            {
+                strcpy(res, ERR_TRANSFER);
+                write(sock, res, sizeof(res));
+                fclose(fp);
+                close(sockfd);
+                return 1;
+            }
+            int write_sz = fwrite(revbuf, sizeof(char), f_block_sz, fp);
+            if (write_sz < f_block_sz)
+            {
+                strcpy(res, ERR_TRANSFER);
+                write(sock, res, sizeof(res));
+                fclose(fp);
+                close(sockfd);
+                return 1;
+            }
+            total_size += f_block_sz;
+            bzero(revbuf, 1024);
+        }
+        fclose(fp);
+
+        // if the transferred stream’s size doesn’t match with the specified size
+        if (total_size < atoi(name[2].c_str()))
+        {
+            strcpy(res, ERR_TRANSFER);
+            write(sock, res, sizeof(res));
+            close(sockfd);
+            return 1;
+        }
+    }
+
+    close(sockfd);
     return 0;
 }
 
@@ -468,7 +604,8 @@ void *connection_handler(void *sockfd)
         pthread_mutex_lock(&lock);
 
         // if exit, simply close the connection and remove user data from the active user map
-        if (strcmp(buff, "exit") == 0) {
+        if (strcmp(buff, "exit") == 0)
+        {
             active_Users.erase(sock);
             pthread_mutex_unlock(&lock);
             break;
@@ -479,7 +616,6 @@ void *connection_handler(void *sockfd)
 
         // release lock
         pthread_mutex_unlock(&lock);
-
     }
     close(sock);
     pthread_exit(0);
@@ -541,16 +677,16 @@ void parse_grass()
                     t = strtok(NULL, " ");
                     if (t != NULL)
                     {
-                        char* name = t;
+                        char *name = t;
                         t = strtok(NULL, "\n");
                         if (t != NULL)
                         {
                             char *pass = t;
-                            
+
                             // store users in usersList
                             struct User u;
-                            u.uname = (char*) malloc(strlen(name)+1);
-                            u.pass = (char*) malloc(strlen(pass)+1);
+                            u.uname = (char *)malloc(strlen(name) + 1);
+                            u.pass = (char *)malloc(strlen(pass) + 1);
                             strcpy(u.uname, name);
                             strcpy(u.pass, pass);
                             u.isLoggedIn = false;
@@ -568,7 +704,7 @@ void parse_grass()
 int main()
 {
     // Parse the grass.conf file
-    parse_grass();   
+    parse_grass();
 
     // Listen to the port and handle each connection
 
@@ -616,9 +752,10 @@ int main()
             printf("accept failed");
             exit(1);
         }
-        
+
         // Create thread and handle connection for each client
-        if (pthread_create(&t, NULL, connection_handler, &sock_new) != 0) {
+        if (pthread_create(&t, NULL, connection_handler, &sock_new) != 0)
+        {
             perror("thread creation failed");
             exit(1);
         }
