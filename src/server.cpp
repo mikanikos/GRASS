@@ -368,10 +368,15 @@ int do_mkdir(vector<string> name, int sock)
                 return 1;
             }
         }
-    }
 
-    command = name[0] + " " + name[1];
-    run_command(command.c_str(), sock);
+        command = name[0] + " " + name[1];
+        run_command(command.c_str(), sock);
+    }
+    else {
+        size_t pos = name[1].find_last_of("/\\");
+        string dir = name[1].substr(pos+1).c_str();
+        write_message(sock, ("mkdir: cannot create '" + dir + "': File exists\n").c_str());
+    }
     
     return 0;
 }
@@ -406,9 +411,15 @@ int do_rm(vector<string> name, int sock)
             write_message(sock, ERR_ACCESS_DENIED);
             return 1;
         }
+
+        command = name[0] + " -r " + name[1];
+        run_command(command.c_str(), sock);
     }
-    command = name[0] + " -r " + name[1];
-    run_command(command.c_str(), sock);
+    else {
+        size_t pos = name[1].find_last_of("/\\");
+        string dir = name[1].substr(pos+1).c_str();
+        write_message(sock, ("rm: cannot remove '" + dir + "': No such file or directory\n").c_str());
+    }
     
     return 0;
 }
