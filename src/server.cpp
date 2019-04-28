@@ -1,5 +1,5 @@
 #include <grass.h>
-#include <message.h>
+#include <error.h>
 #include <ctype.h>
 #include <vector>
 #include <string>
@@ -24,6 +24,8 @@ using namespace std;
 #define IS_DIRECTORY 2
 #define IS_FILE 1
 #define UNKNOWN_PATH 0
+
+char config_file[] = "grass.conf";
 
 // map socket to user
 map<int, struct User> active_Users;
@@ -83,16 +85,28 @@ struct shell_map shell_cmds[NB_COMMANDS] = {
 };
 
 
+// function to write message to the client and server console
+void write_message(int sock, const char *message) 
+{
+    write(sock, message, 1024);
+    printf("%s", message);
+}
+
 // Helper function to run commands in unix.
 void run_command(const char *command, int sock)
 {
     char buff[1024], result[1024] = "";
     FILE *fp;
-    fp = popen(command, "r");
+
+    string com(command);
+    
+    // get stderr too
+    com = com + " 2>&1";
+
+    fp = popen(com.c_str(), "r");
     if (fp == NULL)
     {
-        strcpy(result, "Error: command failed\n");
-        write(sock, result, sizeof(result));
+        write_message(sock, ERR_COMMAND_FAIL);
         return;
     }
     while (fgets(buff, sizeof(buff), fp) != NULL)
@@ -100,7 +114,7 @@ void run_command(const char *command, int sock)
         strcat(result, buff);
     }
     pclose(fp);
-    write(sock, result, sizeof(result));
+    write_message(sock, result);
 }
 
 /*
@@ -126,37 +140,36 @@ void recv_file(int fp, int sock, int size)
 
 int do_login(vector<string> name, int sock)
 {
-    char res[1024];
-
     // user alredy logged in has to logout for re-issuing this command
-    map<int, struct User>::iterator it;
-    it = active_Users.find(sock);
-    if (it != active_Users.end() && (it->second).isLoggedIn) {
-        strcpy(res, "You're alreaddy logged in\n");
-        write(sock, res, sizeof(res));
-        return 1;
-    }
+    // map<int, struct User>::iterator it;
+    // it = active_Users.find(sock);
+    // if (it != active_Users.end() && (it->second).isLoggedIn) {
+    //     //strcpy(res, "You're alreaddy logged in\n");
+    //     write(sock, res, sizeof(res));
+    //     return 1;
+    // }
 
     // search for user in paramters of config file 
     for (auto const& it : userList) {
         if (strcmp(it.uname, name[1].c_str()) == 0) {
             // add to map in order to keep track the activity
             active_Users[sock] = it;
-            strcpy(res, "User found! Use pass command to access the system\n");
-            write(sock, res, sizeof(res));
+            //strcpy(res, "User found! Use pass command to access the system\n");
+            write(sock, "", sizeof(""));
             return 0;
         }
     }
 
     // if the user is not in the config file, no access
-    strcpy(res, ERR_ACCESS_DENIED);
-    write(sock, res, sizeof(res));
-    return 0;
+    //strcpy(res, ERR_ACCESS_DENIED);
+    //write(sock, res, sizeof(res));
+    //printf("%s\n", res);
+    write_message(sock, ERR_ACCESS_DENIED);
+    return 1;
 }
 
 int do_pass(vector<string> name, int sock)
 {
-    char res[1024];
     map<int, struct User>::iterator it;
     
     // search for the user who has tried to login 
@@ -165,19 +178,16 @@ int do_pass(vector<string> name, int sock)
         // password found, authentication is successful
         if (strcmp((it->second).pass, name[1].c_str()) == 0) {
             (it->second).isLoggedIn = true;
-            strcpy(res, "You're authenticated!\n");
-            write(sock, res, sizeof(res));
+            write(sock, "", sizeof(""));
         }
         // wrong password
         else {
-            strcpy(res, "Error: wrong password\n");
-            write(sock, res, sizeof(res));
+            write_message(sock, ERR_AUTH_FAIL);
         }
     }
     // the user has to do login before pass
     else {
-        strcpy(res, ISSUE_LOGIN_MES);
-        write(sock, res, sizeof(res));
+        write_message(sock, ERR_ACCESS_DENIED);
     }
     return 0;
 }
@@ -203,13 +213,10 @@ int check_authentication(int sock) {
 
 int do_logout(vector<string> name, int sock)
 {
-    char res[1024] = "";
-
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
         active_Users.erase(sock);
-        strcpy(res, ISSUE_LOGIN_MES);
-        write(sock, res, sizeof(res));
+        write_message(sock, ERR_ACCESS_DENIED);
         return 1;
     }
 
@@ -219,13 +226,11 @@ int do_logout(vector<string> name, int sock)
     if (it != active_Users.end()) {
         (it->second).isLoggedIn = false;
         active_Users.erase(sock);
-        strcpy(res, "You've logged out\n");
-        write(sock, res, sizeof(res));
+        write(sock, "", sizeof(""));
     }
     // no user found, there's a problem
     else {
-        strcpy(res, "No user found: did you hack the system?\n");
-        write(sock, res, sizeof(res));
+        write_message(sock, ERR_NO_USER_FOUND);
     }
 
     return 0;
@@ -234,41 +239,39 @@ int do_logout(vector<string> name, int sock)
 // UNAUTHENTICATED USERS ALLOWED
 int do_ping(vector<string> name, int sock)
 {
+    // validate argument
+    if (name[1].find_first_not_of("0123456789qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM.-") != std::string::npos) { 
+        write_message(sock, ERR_WRONG_PARAM);
+        return 1;
+    }
+
     string command;
     command = name[0] + " " + name[1] + " -c 1";
     run_command(command.c_str(), sock);
     return 0;
 }
 
-// TO REVIEW, WORKS BUT NOT CORRECTLY
 int do_ls(vector<string> name, int sock)
 {
-    char res[1024];
-
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
         active_Users.erase(sock);
-        strcpy(res, ISSUE_LOGIN_MES);
-        write(sock, res, sizeof(res));
+        write_message(sock, ERR_ACCESS_DENIED);
         return 1;
     }
 
-    // NOT CORRECT -> it must be based on system users
     string command;
-    command = name[0] + " -l";
+    command = name[0] + " -l " + active_Users[sock].cwd;
     run_command(command.c_str(), sock);
     return 0;
 }
 
 int do_date(vector<string> name, int sock)
 {
-    char res[1024];
-
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
         active_Users.erase(sock);
-        strcpy(res, ISSUE_LOGIN_MES);
-        write(sock, res, sizeof(res));
+        write_message(sock, ERR_ACCESS_DENIED);
         return 1;
     }
 
@@ -278,73 +281,76 @@ int do_date(vector<string> name, int sock)
 
 int do_cd(vector<string> name, int sock)
 {
-    char res[1024];
-
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
         active_Users.erase(sock);
-        strcpy(res, ISSUE_LOGIN_MES);
-        write(sock, res, sizeof(res));
+        write_message(sock, ERR_ACCESS_DENIED);
         return 1;
     }
 
     // check path length
     if (name[1].length() > PATH_MAX) {
-        strcpy(res, ERR_PATH_LONG);
-        write(sock, res, sizeof(res));
+        write_message(sock, ERR_PATH_LONG);
         return 1;
     }
+
+    // using user cwd
+    name[1] = string(active_Users[sock].cwd) + "/" + name[1];
 
     // check if the path exists and it's a directory
     if (check_path(name[1]) == IS_DIRECTORY)
     {
         // check permission of path
         if (strstr(realpath(name[1].c_str(), NULL), curr_dir) == NULL) {
-            strcpy(res, ERR_ACCESS_DENIED);
-            write(sock, res, sizeof(res));
+            write_message(sock, ERR_ACCESS_DENIED);
             return 1;
         }
 
-        chdir(name[1].c_str());
+        //chdir(name[1].c_str());
+        strcpy(active_Users[sock].cwd, name[1].c_str());
         write(sock, "", sizeof(""));
     }
     else
     {
-        write(sock, ERR_UNKNOWN_PATH, sizeof(ERR_UNKNOWN_PATH));
+        size_t pos = name[1].find_last_of("/\\");
+        string dir = name[1].substr(pos+1).c_str();
+
+        if (check_path(name[1]) == IS_FILE)
+        {
+            write_message(sock, ("cd: " + dir + ": Not a directory\n").c_str());
+        }
+        else {
+            write_message(sock, ("cd: " + dir + ": No such file or directory\n").c_str());
+        }
     }
     return 0;
 }
 
 int do_mkdir(vector<string> name, int sock)
 {
-    char res[1024];
-
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
         active_Users.erase(sock);
-        strcpy(res, ISSUE_LOGIN_MES);
-        write(sock, res, sizeof(res));
+        write_message(sock, ERR_ACCESS_DENIED);
         return 1;
     }
 
     // check path length
     if (name[1].length() > PATH_MAX) {
-        strcpy(res, ERR_PATH_LONG);
-        write(sock, res, sizeof(res));
+        write_message(sock, ERR_PATH_LONG);
         return 1;
     }
 
     string command;
+
+    // using user cwd
+    name[1] = string(active_Users[sock].cwd) + "/" + name[1];
+    
     int check = check_path(name[1]);
     
     // check if directory already exists
-    if (check == IS_DIRECTORY)
+    if (check != IS_DIRECTORY)
     {
-        write(sock, ERR_PATH_EXISTS, sizeof(ERR_PATH_EXISTS));
-    }
-    else
-    {
-
         string parent_path = name[1];
 
         while (parent_path.back() == '\\' || parent_path.back() == '/') {
@@ -358,38 +364,38 @@ int do_mkdir(vector<string> name, int sock)
             
             // check permission of path
             if (strstr(realpath(parent_path.c_str(), NULL), curr_dir) == NULL) {
-                strcpy(res, ERR_ACCESS_DENIED);
-                write(sock, res, sizeof(res));
+                write_message(sock, ERR_ACCESS_DENIED);
                 return 1;
             }
         }
-
-        command = name[0] + " " + name[1];
-        run_command(command.c_str(), sock);
     }
+
+    command = name[0] + " " + name[1];
+    run_command(command.c_str(), sock);
+    
     return 0;
 }
 
 int do_rm(vector<string> name, int sock)
 {
-    char res[1024];
-
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
         active_Users.erase(sock);
-        strcpy(res, ISSUE_LOGIN_MES);
-        write(sock, res, sizeof(res));
+        write_message(sock, ERR_ACCESS_DENIED);
         return 1;
     }
 
     // check path length
     if (name[1].length() > PATH_MAX) {
-        strcpy(res, ERR_PATH_LONG);
-        write(sock, res, sizeof(res));
+        write_message(sock, ERR_PATH_LONG);
         return 1;
     }
 
     string command;
+
+    // using user cwd
+    name[1] = string(active_Users[sock].cwd) + "/" + name[1];
+
     int check = check_path(name[1]);
 
     // if file, remove file
@@ -397,18 +403,13 @@ int do_rm(vector<string> name, int sock)
     {
         // check permission of path
         if (strstr(realpath(name[1].c_str(), NULL), curr_dir) == NULL) {
-            strcpy(res, ERR_ACCESS_DENIED);
-            write(sock, res, sizeof(res));
+            write_message(sock, ERR_ACCESS_DENIED);
             return 1;
         }
-
-        command = name[0] + " -r " + name[1];
-        run_command(command.c_str(), sock);
     }
-    else
-    {
-        write(sock, ERR_UNKNOWN_PATH, sizeof(ERR_UNKNOWN_PATH));
-    }
+    command = name[0] + " -r " + name[1];
+    run_command(command.c_str(), sock);
+    
     return 0;
 }
 
@@ -437,8 +438,7 @@ int do_w(vector<string> name, int sock)
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
         active_Users.erase(sock);
-        strcpy(res, ISSUE_LOGIN_MES);
-        write(sock, res, sizeof(res));
+        write_message(sock, ERR_ACCESS_DENIED);
         return 1;
     }
 
@@ -451,7 +451,7 @@ int do_w(vector<string> name, int sock)
     }
     strcat(res, "\n");
 
-    write(sock, res, sizeof(res));
+    write_message(sock, res);
     return 0;
 }
 
@@ -462,8 +462,7 @@ int do_whoami(vector<string> name, int sock)
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
         active_Users.erase(sock);
-        strcpy(res, ISSUE_LOGIN_MES);
-        write(sock, res, sizeof(res));
+        write_message(sock, ERR_ACCESS_DENIED);
         return 1;
     }
 
@@ -473,12 +472,11 @@ int do_whoami(vector<string> name, int sock)
     if (it != active_Users.end()) {
         strcpy(res, (it->second).uname);
         strcat(res, "\n");
-        write(sock, res, sizeof(res));
+        write_message(sock, res);
     }
     // if user not found, it means that the user is not authenticated but it still accessed the command execution statement (there's a problem) 
     else {
-        strcpy(res, "We didn't find you: did you hack the system?\n");
-        write(sock, res, sizeof(res));
+        write_message(sock, ERR_NO_USER_FOUND);
     }
 
     return 0;
@@ -493,7 +491,7 @@ void handle_input(char *command, int sock)
 
     if (tokens.size() == 0)
     {
-        write(sock, ERR_NULL_CMD, sizeof(ERR_NULL_CMD));
+        write_message(sock, ERR_NULL_CMD);
         return;
     }
 
@@ -503,14 +501,14 @@ void handle_input(char *command, int sock)
         {
             if (shell_cmds[i].argc != tokens.size() - 1)
             {
-                write(sock, ERR_NBR_PARAMETERS, sizeof(ERR_NBR_PARAMETERS));
+                write_message(sock, ERR_NBR_PARAMETERS);
                 return;
             }
             shell_cmds[i].fct(tokens, sock);
             return;
         }
     }
-    write(sock, ERR_UNKNOWN_CMD, sizeof(ERR_UNKNOWN_CMD));
+    write_message(sock, ERR_UNKNOWN_CMD);
     return;
 }
 
@@ -565,8 +563,25 @@ void search(char *pattern)
 void parse_grass()
 {
     char *s, *t;
-    char file[] = "../grass.conf";
-    FILE *fp = fopen(file, "r");
+    //char file[PATH_MAX];
+
+    // taking absolute path of the binary, works on Linux only
+    //readlink("/proc/self/exe", file, sizeof(file));
+
+    // string path(file);
+    // size_t pos = path.find_last_of("/\\");    
+    // path = path.substr(0, pos+1).c_str();
+
+    // strcpy(file, path.c_str());
+    // strcat(file, config_file);
+
+    // using absolute path for opening config file so the server can be called from any directory
+    FILE *fp = fopen(config_file, "r");
+
+    if (fp == NULL) {
+        perror("No configuration file found");
+        exit(1);
+    }
 
     char buffer[256];
 
@@ -585,7 +600,12 @@ void parse_grass()
                     t = strtok(NULL, "\n");
                     if (t != NULL)
                     {
+                        if (check_path(t) != IS_DIRECTORY) {
+                            perror("directory in config file doesn't exist");
+                            exit(1);
+                        }
                         strcpy(curr_dir, realpath(t, NULL));
+                        chdir(curr_dir);
                     }
                 }
 
@@ -617,6 +637,7 @@ void parse_grass()
                             u.pass = (char*) malloc(strlen(pass)+1);
                             strcpy(u.uname, name);
                             strcpy(u.pass, pass);
+                            strcpy(u.cwd, curr_dir);
                             u.isLoggedIn = false;
                             userList.push_back(u);
                         }
@@ -677,7 +698,7 @@ int main()
         sock_new = accept(sock, (struct sockaddr *)&c_addr, (socklen_t *)&c_addr_len);
         if (sock_new < 0)
         {
-            printf("accept failed");
+            perror("accept failed");
             exit(1);
         }
         
@@ -687,7 +708,6 @@ int main()
             exit(1);
         }
     }
-
     close(sock);
     return 0;
 }

@@ -16,12 +16,12 @@
 #include <stdbool.h>
 #include <sys/stat.h>
 #include <arpa/inet.h>
-
+ 
 struct User
 {
     char *uname;
     char *pass;
-
+    char cwd[128];
     bool isLoggedIn;
 };
 

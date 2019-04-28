@@ -112,8 +112,16 @@ int main(int argc, char **argv)
             exit(1);
         }
 
-        while (getline(infile, line))
+        while (true)
         {
+            if (!getline(infile, line)) {
+                //line = "exit";
+                infile.close();
+                outfile.close();
+                // redirect to default mode if no exit command is issued
+                goto DEFAULT;
+            }
+
             bzero(buff, sizeof(buff));
 
             strcpy(buff, line.c_str());
@@ -122,15 +130,16 @@ int main(int argc, char **argv)
 
             if ((strcmp(buff, "exit")) == 0)
             {
-                outfile << "Exit successfully\n";
+                //outfile << "Exit successfully\n";
                 break;
             }
 
             bzero(buff, sizeof(buff));
             read(sock, buff, sizeof(buff));
-            outfile << buff;
 
+            outfile << buff;
         }
+        
         infile.close();
         outfile.close();
     }
@@ -138,8 +147,9 @@ int main(int argc, char **argv)
     {
         while (true)
         {
+            DEFAULT:
+
             bzero(buff, sizeof(buff));
-            printf("grass> ");
             n = 0;
 
             char c = getchar();
@@ -155,7 +165,7 @@ int main(int argc, char **argv)
             {
                 strcpy(buff, "exit");
                 write(sock, buff, sizeof(buff));
-                printf("\nExit successfully\n");
+                //printf("\nExit successfully\n");
                 break;
             }
 
@@ -163,7 +173,7 @@ int main(int argc, char **argv)
 
             if ((strcmp(buff, "exit")) == 0)
             {
-                printf("\nExit successfully\n");
+                //printf("\nExit successfully\n");
                 break;
             }
 
