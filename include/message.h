@@ -7,7 +7,7 @@
 #define ERR_UNKNOWN_PATH "Error: path doesn't exist.\n"
 #define ERR_PATH_EXISTS "Error: path already exists.\n"
 #define ERR_PATH_TOO_LONG "Error: the path is too long.\n"
-#define ERR_FILE_NOT_FOUND "ERROR: File not found.\n"
+#define ERR_FILE_NOT_FOUND "Error: File not found.\n"
 #define ISSUE_LOGIN_MES "You need to authenticate first, please issue the login command.\n"
 #define ERR_TRANSFER "Error: file transfer failed.\n"
 

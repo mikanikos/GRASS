@@ -21,8 +21,8 @@ void send_file(FILE *fp, int d_port, int sock)
 {
     char sdbuf[1024]; // Send buffer
     bzero(sdbuf, 1024);
-    printf("sending file put\n");
-    fflush(stdout);
+    // printf("sending file put\n");
+    // fflush(stdout);
     int f_block_sz;
     while ((f_block_sz = fread(sdbuf, sizeof(char), 1024, fp)) > 0)
     {
@@ -33,8 +33,8 @@ void send_file(FILE *fp, int d_port, int sock)
         }
         bzero(sdbuf, 1024);
     }
-    printf("send success put\n");
-    fflush(stdout);
+    // printf("send success put\n");
+    // fflush(stdout);
 }
 
 /*
@@ -67,8 +67,8 @@ void signalHandler(int sig_num)
 
 void do_put(int port, char *path, const char *file, int size)
 {
-    printf("start put\n");
-    fflush(stdout);
+    // printf("start put\n");
+    // fflush(stdout);
     // CREATION
     int sock;
 
@@ -99,8 +99,8 @@ void do_put(int port, char *path, const char *file, int size)
         close(sock);
         return;
     }
-    printf("listening put\n");
-    fflush(stdout);
+    // printf("listening put\n");
+    // fflush(stdout);
 
     struct sockaddr_in c_addr;
     int c_addr_len = sizeof(c_addr);
@@ -113,30 +113,20 @@ void do_put(int port, char *path, const char *file, int size)
         close(sock_new);
         return;
     }
-    char file_path[128];
+    char file_path[1024];
     strcpy(file_path, path);
     strcat(file_path, "/");
     strcat(file_path, file);
     char *f_name = file_path;
 
     FILE *fp = fopen(f_name, "r");
-    if (fp == NULL)
-    {
-        printf(ERR_FILE_NOT_FOUND);
-        close(sock);
-        close(sock_new);
-        return;
-    }
-    printf("open file put\n");
-    fflush(stdout);
-
     send_file(fp, port, sock_new);
 
     close(sock_new);
     close(sock);
 }
 
-void handle_file_transfer(char *in, char *cmd, char *path)
+void handle_file_transfer(char *in, char *cmd, char *path, int sock)
 {
     string input(in);
     istringstream buffer_in(input);
@@ -155,9 +145,46 @@ void handle_file_transfer(char *in, char *cmd, char *path)
     {
         int port = atoi(tokens_in[2].c_str());
         const char *file = tokens_cmd[1].c_str();
+        FILE *fp = fopen(file, "r");
+        if (fp == NULL)
+        {
+            printf(ERR_FILE_NOT_FOUND);
+            return;
+        }
         int file_sz = atoi(tokens_cmd[2].c_str());
         do_put(port, path, file, file_sz);
+
+        // Check if the server has successfully received the file or not
+        char buff[1024];
+        bzero(buff, sizeof(buff));
+        read(sock, buff, sizeof(buff));
+        printf("%s", buff);
     }
+}
+
+int check_put_file_exist(char *command)
+{
+    string input(command);
+    istringstream buffer_in(input);
+    vector<string> tokens{istream_iterator<string>(buffer_in), istream_iterator<string>()};
+
+    if (tokens.size() == 0)
+    {
+        return 0;
+    }
+
+    if (tokens[0] == "put")
+    {
+        const char *file = tokens[1].c_str();
+        FILE *fp = fopen(file, "r");
+        if (fp == NULL)
+        {
+            printf(ERR_FILE_NOT_FOUND);
+            return -1;
+        }
+    }
+
+    return 0;
 }
 
 int main(int argc, char **argv)
@@ -234,18 +261,23 @@ int main(int argc, char **argv)
             break;
         }
 
-        write(sock, out_buff, sizeof(out_buff));
+        int err = check_put_file_exist(out_buff);
 
-        if ((strcmp(out_buff, "exit")) == 0)
+        if (err != -1)
         {
-            printf("\nExit successfully\n");
-            break;
+            write(sock, out_buff, sizeof(out_buff));
+
+            if ((strcmp(out_buff, "exit")) == 0)
+            {
+                printf("\nExit successfully\n");
+                break;
+            }
+
+            read(sock, in_buff, sizeof(in_buff));
+            printf("%s", in_buff);
+
+            handle_file_transfer(in_buff, out_buff, local_path, sock);
         }
-
-        read(sock, in_buff, sizeof(in_buff));
-        printf("%s", in_buff);
-
-        handle_file_transfer(in_buff, out_buff, local_path);
     }
 
     close(sock);

@@ -32,6 +32,8 @@ list<struct User> userList;
 char port[7];
 char curr_dir[10];
 
+int PORT = 31337;
+
 // Handle threads
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -467,8 +469,10 @@ int do_put(vector<string> name, int sock)
     }
 
     // choose a port and send it to the client
+    PORT++;
     strcpy(res, "put port: ");
-    strcat(res, "31337\n"); // TODO: choose random port
+    strcat(res, std::to_string(PORT).c_str());
+    strcat(res, "\n");
     write(sock, res, sizeof(res));
     bzero(res, 1024);
 
@@ -488,7 +492,7 @@ int do_put(vector<string> name, int sock)
     struct sockaddr_in s_addr;
     s_addr.sin_family = AF_INET;
     s_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-    s_addr.sin_port = htons(31337); // TODO: choose random port
+    s_addr.sin_port = htons(PORT);
     if (inet_pton(AF_INET, "127.0.0.1", &s_addr.sin_addr) < 0)
     {
         printf("invalid address\n");
@@ -504,7 +508,7 @@ int do_put(vector<string> name, int sock)
     }
 
     char revbuf[1024];
-    FILE *fp = fopen(filename, "a");
+    FILE *fp = fopen(filename, "w+");
     if (fp == NULL)
     {
         strcpy(res, ERR_TRANSFER);
@@ -518,20 +522,12 @@ int do_put(vector<string> name, int sock)
         int f_block_sz = 0;
         int total_size = 0;
         int success = 0;
-
+        int to_be_transferred = filesize;
         while (f_block_sz = recv(sockfd, revbuf, 1024, 0))
         {
             if (f_block_sz < 0)
             {
-                strcpy(res, ERR_TRANSFER);
-                write(sock, res, sizeof(res));
-                fclose(fp);
-                close(sockfd);
-                return 1;
-            }
-            int write_sz = fwrite(revbuf, sizeof(char), f_block_sz, fp);
-            if (write_sz < f_block_sz)
-            {
+                // printf("check2\n");
                 strcpy(res, ERR_TRANSFER);
                 write(sock, res, sizeof(res));
                 fclose(fp);
@@ -539,6 +535,35 @@ int do_put(vector<string> name, int sock)
                 return 1;
             }
             total_size += f_block_sz;
+            if (to_be_transferred > f_block_sz)
+            {
+                int write_sz = fwrite(revbuf, sizeof(char), f_block_sz, fp);
+                if (write_sz < f_block_sz)
+                {
+                    // printf("check1\n");
+                    strcpy(res, ERR_TRANSFER);
+                    write(sock, res, sizeof(res));
+                    fclose(fp);
+                    close(sockfd);
+                    return 1;
+                }
+                to_be_transferred -= f_block_sz;
+            }
+            else
+            {
+                int write_sz = fwrite(revbuf, sizeof(char), to_be_transferred, fp);
+                if (write_sz < to_be_transferred)
+                {
+                    // printf("check1\n");
+                    strcpy(res, ERR_TRANSFER);
+                    write(sock, res, sizeof(res));
+                    fclose(fp);
+                    close(sockfd);
+                    return 1;
+                }
+                to_be_transferred = 0;
+            }
+
             bzero(revbuf, 1024);
         }
         fclose(fp);
@@ -546,6 +571,7 @@ int do_put(vector<string> name, int sock)
         // if the transferred stream’s size doesn’t match with the specified size
         if (total_size != filesize)
         {
+            // printf("file tranfer failed\n");
             strcpy(res, ERR_TRANSFER);
             write(sock, res, sizeof(res));
             close(sockfd);
@@ -553,6 +579,7 @@ int do_put(vector<string> name, int sock)
         }
     }
 
+    write(sock, "", sizeof(""));
     close(sockfd);
     return 0;
 }
