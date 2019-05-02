@@ -276,6 +276,11 @@ int do_date(const string& name, const int sock)
 
 int do_cd(const string& name, const int sock)
 {
+    wordexp_t p;
+    wordexp(name.c_str(), &p, 0);
+
+    string folderName = string(p.we_wordv[0]);
+
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
         active_Users.erase(sock);
@@ -284,13 +289,13 @@ int do_cd(const string& name, const int sock)
     }
 
     // check path length
-    if (name.length() > PATH_MAX) {
+    if (folderName.length() > PATH_MAX) {
         write_message(sock, ERR_PATH_LONG);
         return 1;
     }
 
     // using user cwd
-    string nname = string(active_Users[sock].cwd) + "/" + name;
+    string nname = string(active_Users[sock].cwd) + "/" + folderName;
 
     // check if the path exists and it's a directory
     if (check_path(nname) == IS_DIRECTORY)
@@ -483,9 +488,13 @@ void handle_input(const char *command, const int sock)
     p.we_wordc = 0;
     wordexp(command, &p, 0);
 
-    if (tokens.size() == 0 || p.we_wordc == 0)
+    if (tokens.size() == 0)
     {
         write_message(sock, ERR_NULL_CMD);
+        return;
+    }
+    else if (p.we_wordc == 0) {
+        write_message(sock, ERR_UNAUTHORISED_CHARS);
         return;
     }
 
