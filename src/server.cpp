@@ -27,6 +27,7 @@ using namespace std;
 #define UNKNOWN_PATH 0
 
 char config_file[] = "grass.conf";
+char server_ip[] = "127.0.0.1";
 
 // map socket to user
 map<int, struct User> active_Users;
@@ -155,16 +156,10 @@ int do_login(const string& name, const int sock)
         if (strcmp(it.uname, name.c_str()) == 0) {
             // add to map in order to keep track the activity
             active_Users[sock] = it;
-            //strcpy(res, "User found! Use pass command to access the system\n");
             write(sock, "", sizeof(""));
             return 0;
         }
     }
-
-    // if the user is not in the config file, no access
-    //strcpy(res, ERR_ACCESS_DENIED);
-    //write(sock, res, sizeof(res));
-    //printf("%s\n", res);
     write_message(sock, ERR_ACCESS_DENIED);
     return 1;
 }
@@ -326,15 +321,12 @@ int do_cd(const string& name, const int sock)
     }
     else
     {
-        size_t pos = nname.find_last_of("/\\");
-        string dir = nname.substr(pos+1).c_str();
-
         if (check_path(nname) == IS_FILE)
         {
-            write_message(sock, ("cd: " + dir + ": Not a directory\n").c_str());
+            write_message(sock, ("cd: " + name + ": Not a directory\n").c_str());
         }
         else {
-            write_message(sock, ("cd: " + dir + ": No such file or directory\n").c_str());
+            write_message(sock, ("cd: " + name + ": No such file or directory\n").c_str());
         }
     }
     return 0;
@@ -387,9 +379,7 @@ int do_mkdir(const string& name, const int sock)
         run_command(command.c_str(), sock);
     }
     else {
-        size_t pos = nname.find_last_of("/\\");
-        string dir = nname.substr(pos+1).c_str();
-        write_message(sock, ("mkdir: cannot create '" + dir + "': File exists\n").c_str());
+        write_message(sock, ("mkdir: cannot create '" + name + "': File exists\n").c_str());
     }
     
     return 0;
@@ -430,9 +420,7 @@ int do_rm(const string& name, const int sock)
         run_command(command.c_str(), sock);
     }
     else {
-        size_t pos = nname.find_last_of("/\\");
-        string dir = nname.substr(pos+1).c_str();
-        write_message(sock, ("rm: cannot remove '" + dir + "': No such file or directory\n").c_str());
+        write_message(sock, ("rm: cannot remove '" + name + "': No such file or directory\n").c_str());
     }
     
     return 0;
@@ -596,19 +584,6 @@ void search(char *pattern)
 void parse_grass()
 {
     char *s, *t;
-    //char file[PATH_MAX];
-
-    // taking absolute path of the binary, works on Linux only
-    //readlink("/proc/self/exe", file, sizeof(file));
-
-    // string path(file);
-    // size_t pos = path.find_last_of("/\\");    
-    // path = path.substr(0, pos+1).c_str();
-
-    // strcpy(file, path.c_str());
-    // strcat(file, config_file);
-
-    // using absolute path for opening config file so the server can be called from any directory
     FILE *fp = fopen(config_file, "r");
 
     if (fp == NULL) {
@@ -686,7 +661,7 @@ void parse_grass()
 int main()
 {
     // Parse the grass.conf file
-    parse_grass();   
+    parse_grass();
 
     // Listen to the port and handle each connection
 
@@ -702,7 +677,7 @@ int main()
 
     struct sockaddr_in s_addr;
     s_addr.sin_family = AF_INET;
-    s_addr.sin_addr.s_addr = inet_addr("127.0.0.1"); // htonl(INADDR_ANY);
+    s_addr.sin_addr.s_addr = inet_addr(server_ip);
     s_addr.sin_port = htons(atoi(port));
 
     // BIND
@@ -717,6 +692,10 @@ int main()
     {
         perror("listen failed");
         exit(1);
+    }
+    else {
+        string message = "Listening on address " + string(server_ip) + " and port " + string(port);
+        perror(message.c_str());
     }
 
     struct sockaddr_in c_addr;

@@ -21,7 +21,7 @@ struct User
 {
     char *uname;
     char *pass;
-    char cwd[128];
+    char cwd[1024];
     bool isLoggedIn;
 };
 
