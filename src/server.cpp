@@ -1,5 +1,5 @@
 #include <grass.h>
-#include <error.h>
+#include <errmsg.h>
 #include <ctype.h>
 #include <vector>
 #include <string>
@@ -276,7 +276,7 @@ int do_grep(const string& name, const int sock)
         return 1;
     }
 
-    run_command(("grep -rl " + name).c_str(), sock);
+    run_command(("grep -rl " + name + " " + active_Users[sock].cwd).c_str(), sock);
     return 0;
 }
 
@@ -518,7 +518,7 @@ void handle_input(const char *command, const int sock)
     p.we_wordc = 0;
     wordexp(command, &p, 0);
 
-    if (tokens.size() == 0)
+    if (tokens.size() == 0 || p.we_wordc == 0)
     {
         write_message(sock, ERR_NULL_CMD);
         return;
