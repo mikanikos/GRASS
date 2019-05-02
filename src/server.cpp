@@ -446,6 +446,8 @@ int do_whoami(vector<string> name, int sock)
 
 int do_put(vector<string> name, int sock)
 {
+    const char *filename = name[1].c_str();
+    int filesize = atoi(name[2].c_str());
     char res[1024];
 
     // check if the user is allowed to execute the command
@@ -457,7 +459,7 @@ int do_put(vector<string> name, int sock)
     }
 
     // check if the filename is not too long
-    if (strlen(name[1].c_str()) > 128)
+    if (strlen(filename) > 128)
     {
         strcpy(res, ERR_PATH_TOO_LONG);
         write(sock, res, sizeof(res));
@@ -502,8 +504,7 @@ int do_put(vector<string> name, int sock)
     }
 
     char revbuf[1024];
-    const char *f_name = (name[1]).c_str();
-    FILE *fp = fopen(f_name, "a");
+    FILE *fp = fopen(filename, "a");
     if (fp == NULL)
     {
         strcpy(res, ERR_TRANSFER);
@@ -543,7 +544,7 @@ int do_put(vector<string> name, int sock)
         fclose(fp);
 
         // if the transferred stream’s size doesn’t match with the specified size
-        if (total_size < atoi(name[2].c_str()))
+        if (total_size != filesize)
         {
             strcpy(res, ERR_TRANSFER);
             write(sock, res, sizeof(res));
