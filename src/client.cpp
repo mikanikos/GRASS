@@ -149,6 +149,8 @@ int main(int argc, char **argv)
         {
             DEFAULT:
 
+            printf("> ");
+
             bzero(buff, sizeof(buff));
             n = 0;
 
@@ -164,16 +166,12 @@ int main(int argc, char **argv)
             if (c == EOF)
             {
                 strcpy(buff, "exit");
-                write(sock, buff, sizeof(buff));
-                //printf("\nExit successfully\n");
-                break;
             }
 
             write(sock, buff, sizeof(buff));
 
             if ((strcmp(buff, "exit")) == 0)
             {
-                //printf("\nExit successfully\n");
                 break;
             }
 
