@@ -113,7 +113,7 @@ void do_put(int port, char *path, const char *file, int size)
         close(sock_new);
         return;
     }
-    char file_path[2048];
+    char file_path[128];
     strcpy(file_path, path);
     strcat(file_path, "/");
     strcat(file_path, file);
