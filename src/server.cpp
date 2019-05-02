@@ -13,6 +13,7 @@
 #include <list> 
 #include <map> 
 #include <pthread.h>
+#include <wordexp.h>
 using namespace std;
 
 #define NB_COMMANDS 11
@@ -39,25 +40,25 @@ char curr_dir[PATH_MAX];
 // Handle threads
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
-int check_authentication(int);
-int check_path(string);
-int do_login(vector<string>, int);
-int do_pass(vector<string>, int);
-int do_ping(vector<string>, int);
-int do_ls(vector<string>, int);
-int do_cd(vector<string>, int);
-int do_mkdir(vector<string>, int);
-int do_rm(vector<string>, int);
-//int do_get(vector<string> name, int sock);
-//int do_put(vector<string> name, int sock);
-//int do_grep(vector<string> name, int sock);
-int do_date(vector<string>, int);
-int do_whoami(vector<string>, int);
-int do_w(vector<string>, int);
-int do_logout(vector<string>, int);
-//int do_exit(vector<string> name, int sock);
+int check_authentication(const int);
+int check_path(const string&);
+int do_login(const string&, const int);
+int do_pass(const string&, const int);
+int do_ping(const string&, const int);
+int do_ls(const string&, const int);
+int do_cd(const string&, const int);
+int do_mkdir(const string&, const int);
+int do_rm(const string&, const int);
+//int do_get(const string&, const int);
+//int do_put(const string&, const int);
+int do_grep(const string&, const int);
+int do_date(const string&, const int);
+int do_whoami(const string&, const int);
+int do_w(const string&, const int);
+int do_logout(const string&, const int);
+//int do_exit(const string&, const int);
 
-typedef int (*shell_fct)(vector<string>, int);
+typedef int (*shell_fct)(const string&, const int);
 
 struct shell_map
 {
@@ -86,14 +87,14 @@ struct shell_map shell_cmds[NB_COMMANDS] = {
 
 
 // function to write message to the client and server console
-void write_message(int sock, const char *message) 
+void write_message(const int sock, const char *message) 
 {
     write(sock, message, 1024);
     printf("%s", message);
 }
 
 // Helper function to run commands in unix.
-void run_command(const char *command, int sock)
+void run_command(const char *command, const int sock)
 {
     char buff[1024], result[1024] = "";
     FILE *fp;
@@ -123,7 +124,7 @@ void run_command(const char *command, int sock)
  * fp: file descriptor of file to send
  * sock: socket that has already been created.
  */
-void send_file(int fp, int sock)
+void send_file(const int fp, const int sock)
 {
 }
 
@@ -134,11 +135,11 @@ void send_file(int fp, int sock)
  * sock: socket that has already been created.
  * size: the size (in bytes) of the file to recv
  */
-void recv_file(int fp, int sock, int size)
+void recv_file(const int fp, const int sock, const int size)
 {
 }
 
-int do_login(vector<string> name, int sock)
+int do_login(const string& name, const int sock)
 {
     // user alredy logged in has to logout for re-issuing this command
     // map<int, struct User>::iterator it;
@@ -151,7 +152,7 @@ int do_login(vector<string> name, int sock)
 
     // search for user in paramters of config file 
     for (auto const& it : userList) {
-        if (strcmp(it.uname, name[1].c_str()) == 0) {
+        if (strcmp(it.uname, name.c_str()) == 0) {
             // add to map in order to keep track the activity
             active_Users[sock] = it;
             //strcpy(res, "User found! Use pass command to access the system\n");
@@ -168,7 +169,7 @@ int do_login(vector<string> name, int sock)
     return 1;
 }
 
-int do_pass(vector<string> name, int sock)
+int do_pass(const string& name, const int sock)
 {
     map<int, struct User>::iterator it;
     
@@ -176,7 +177,7 @@ int do_pass(vector<string> name, int sock)
     it = active_Users.find(sock);
     if (it != active_Users.end()) {
         // password found, authentication is successful
-        if (strcmp((it->second).pass, name[1].c_str()) == 0) {
+        if (strcmp((it->second).pass, name.c_str()) == 0) {
             (it->second).isLoggedIn = true;
             write(sock, "", sizeof(""));
         }
@@ -193,7 +194,7 @@ int do_pass(vector<string> name, int sock)
 }
 
 // check if the user is allowed to execute/access, returns true if yes 
-int check_authentication(int sock) {
+int check_authentication(const int sock) {
     map<int, struct User>::iterator it;
      
     // search the user in the map, if not present the user is not authnticated yet (no login command), otherwise check if he completed the authentication with pass 
@@ -211,7 +212,7 @@ int check_authentication(int sock) {
     }
 }
 
-int do_logout(vector<string> name, int sock)
+int do_logout(const string& name, const int sock)
 {
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
@@ -237,21 +238,21 @@ int do_logout(vector<string> name, int sock)
 }
 
 // UNAUTHENTICATED USERS ALLOWED
-int do_ping(vector<string> name, int sock)
+int do_ping(const string& name, const int sock)
 {
     // validate argument
-    if (name[1].find_first_not_of("0123456789qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM.-") != std::string::npos) { 
+    if (name.find_first_not_of("0123456789qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM.- ") != std::string::npos) { 
         write_message(sock, ERR_WRONG_PARAM);
         return 1;
     }
 
     string command;
-    command = name[0] + " " + name[1] + " -c 1";
+    command = "ping " + name + " -c 1";
     run_command(command.c_str(), sock);
     return 0;
 }
 
-int do_ls(vector<string> name, int sock)
+int do_ls(const string& name, const int sock)
 {
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
@@ -261,12 +262,12 @@ int do_ls(vector<string> name, int sock)
     }
 
     string command;
-    command = name[0] + " -l " + active_Users[sock].cwd;
+    command = string("ls -l ") + active_Users[sock].cwd;
     run_command(command.c_str(), sock);
     return 0;
 }
 
-int do_date(vector<string> name, int sock)
+int do_grep(const string& name, const int sock)
 {
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
@@ -275,11 +276,24 @@ int do_date(vector<string> name, int sock)
         return 1;
     }
 
-    run_command(name[0].c_str(), sock);
+    run_command(("grep -rl " + name).c_str(), sock);
     return 0;
 }
 
-int do_cd(vector<string> name, int sock)
+int do_date(const string& name, const int sock)
+{
+    // check if the user is allowed to execute the command
+    if (!check_authentication(sock)) {
+        active_Users.erase(sock);
+        write_message(sock, ERR_ACCESS_DENIED);
+        return 1;
+    }
+
+    run_command("date", sock);
+    return 0;
+}
+
+int do_cd(const string& name, const int sock)
 {
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
@@ -289,33 +303,33 @@ int do_cd(vector<string> name, int sock)
     }
 
     // check path length
-    if (name[1].length() > PATH_MAX) {
+    if (name.length() > PATH_MAX) {
         write_message(sock, ERR_PATH_LONG);
         return 1;
     }
 
     // using user cwd
-    name[1] = string(active_Users[sock].cwd) + "/" + name[1];
+    string nname = string(active_Users[sock].cwd) + "/" + name;
 
     // check if the path exists and it's a directory
-    if (check_path(name[1]) == IS_DIRECTORY)
+    if (check_path(nname) == IS_DIRECTORY)
     {
         // check permission of path
-        if (strstr(realpath(name[1].c_str(), NULL), curr_dir) == NULL) {
+        if (strstr(realpath(nname.c_str(), NULL), curr_dir) == NULL) {
             write_message(sock, ERR_ACCESS_DENIED);
             return 1;
         }
 
-        //chdir(name[1].c_str());
-        strcpy(active_Users[sock].cwd, name[1].c_str());
+        //chdir(nname.c_str());
+        strcpy(active_Users[sock].cwd, nname.c_str());
         write(sock, "", sizeof(""));
     }
     else
     {
-        size_t pos = name[1].find_last_of("/\\");
-        string dir = name[1].substr(pos+1).c_str();
+        size_t pos = nname.find_last_of("/\\");
+        string dir = nname.substr(pos+1).c_str();
 
-        if (check_path(name[1]) == IS_FILE)
+        if (check_path(nname) == IS_FILE)
         {
             write_message(sock, ("cd: " + dir + ": Not a directory\n").c_str());
         }
@@ -326,7 +340,7 @@ int do_cd(vector<string> name, int sock)
     return 0;
 }
 
-int do_mkdir(vector<string> name, int sock)
+int do_mkdir(const string& name, const int sock)
 {
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
@@ -336,7 +350,7 @@ int do_mkdir(vector<string> name, int sock)
     }
 
     // check path length
-    if (name[1].length() > PATH_MAX) {
+    if (name.length() > PATH_MAX) {
         write_message(sock, ERR_PATH_LONG);
         return 1;
     }
@@ -344,14 +358,14 @@ int do_mkdir(vector<string> name, int sock)
     string command;
 
     // using user cwd
-    name[1] = string(active_Users[sock].cwd) + "/" + name[1];
+    string nname = string(active_Users[sock].cwd) + "/" + name;
     
-    int check = check_path(name[1]);
+    int check = check_path(nname);
     
     // check if directory already exists
     if (check != IS_DIRECTORY)
     {
-        string parent_path = name[1];
+        string parent_path = nname;
 
         while (parent_path.back() == '\\' || parent_path.back() == '/') {
             parent_path = parent_path.substr(0, parent_path.size()-1);
@@ -369,19 +383,19 @@ int do_mkdir(vector<string> name, int sock)
             }
         }
 
-        command = name[0] + " " + name[1];
+        command = "mkdir " + nname;
         run_command(command.c_str(), sock);
     }
     else {
-        size_t pos = name[1].find_last_of("/\\");
-        string dir = name[1].substr(pos+1).c_str();
+        size_t pos = nname.find_last_of("/\\");
+        string dir = nname.substr(pos+1).c_str();
         write_message(sock, ("mkdir: cannot create '" + dir + "': File exists\n").c_str());
     }
     
     return 0;
 }
 
-int do_rm(vector<string> name, int sock)
+int do_rm(const string& name, const int sock)
 {
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
@@ -391,7 +405,7 @@ int do_rm(vector<string> name, int sock)
     }
 
     // check path length
-    if (name[1].length() > PATH_MAX) {
+    if (name.length() > PATH_MAX) {
         write_message(sock, ERR_PATH_LONG);
         return 1;
     }
@@ -399,25 +413,25 @@ int do_rm(vector<string> name, int sock)
     string command;
 
     // using user cwd
-    name[1] = string(active_Users[sock].cwd) + "/" + name[1];
+    string nname = string(active_Users[sock].cwd) + "/" + name;
 
-    int check = check_path(name[1]);
+    int check = check_path(nname);
 
     // if file, remove file
     if (check == IS_FILE || check == IS_DIRECTORY)
     {
         // check permission of path
-        if (strstr(realpath(name[1].c_str(), NULL), curr_dir) == NULL) {
+        if (strstr(realpath(nname.c_str(), NULL), curr_dir) == NULL) {
             write_message(sock, ERR_ACCESS_DENIED);
             return 1;
         }
 
-        command = name[0] + " -r " + name[1];
+        command = "rm -r " + nname;
         run_command(command.c_str(), sock);
     }
     else {
-        size_t pos = name[1].find_last_of("/\\");
-        string dir = name[1].substr(pos+1).c_str();
+        size_t pos = nname.find_last_of("/\\");
+        string dir = nname.substr(pos+1).c_str();
         write_message(sock, ("rm: cannot remove '" + dir + "': No such file or directory\n").c_str());
     }
     
@@ -425,7 +439,7 @@ int do_rm(vector<string> name, int sock)
 }
 
 // check validity of the path issued, returns code to identify whether it is a folder/file or unknown path
-int check_path(string path)
+int check_path(const string& path)
 {
     struct stat s;
     if (stat(path.c_str(), &s) == 0)
@@ -442,7 +456,7 @@ int check_path(string path)
     return UNKNOWN_PATH;
 }
 
-int do_w(vector<string> name, int sock)
+int do_w(const string& name, const int sock)
 {
     char res[1024] = "";
 
@@ -466,7 +480,7 @@ int do_w(vector<string> name, int sock)
     return 0;
 }
 
-int do_whoami(vector<string> name, int sock)
+int do_whoami(const string& name, const int sock)
 {
     char res[1024] = "";
 
@@ -493,12 +507,16 @@ int do_whoami(vector<string> name, int sock)
     return 0;
 }
 
-void handle_input(char *command, int sock)
+void handle_input(const char *command, const int sock)
 {
     string input(command);
     istringstream buffer(input);
 
     vector<string> tokens{istream_iterator<string>(buffer), istream_iterator<string>()};
+
+    wordexp_t p;
+    p.we_wordc = 0;
+    wordexp(command, &p, 0);
 
     if (tokens.size() == 0)
     {
@@ -510,16 +528,20 @@ void handle_input(char *command, int sock)
     {
         if (shell_cmds[i].name == tokens[0])
         {
-            if (shell_cmds[i].argc != tokens.size() - 1)
+            if (shell_cmds[i].argc != p.we_wordc - 1)
             {
                 write_message(sock, ERR_NBR_PARAMETERS);
+                wordfree(&p);
                 return;
             }
-            shell_cmds[i].fct(tokens, sock);
+            string args = string(command + (strlen(shell_cmds[i].name) + 1));
+            shell_cmds[i].fct(args, sock);
+            wordfree(&p);
             return;
         }
     }
     write_message(sock, ERR_UNKNOWN_CMD);
+    wordfree(&p);
     return;
 }
 
