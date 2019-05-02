@@ -16,12 +16,23 @@
 #include <stdbool.h>
 #include <sys/stat.h>
 #include <arpa/inet.h>
+#include <string>
  
+
+#define MAX_BUFF_SIZE 1024
+#define NB_COMMANDS 12
+#define MAX_THREADS 30
+#define PATH_MAX 128
+
+
+char config_file[] = "grass.conf";
+char server_ip[] = "127.0.0.1";
+
 struct User
 {
-    char *uname;
-    char *pass;
-    char cwd[1024];
+    std::string uname;
+    std::string pass;
+    char cwd[MAX_BUFF_SIZE];
     bool isLoggedIn;
 };
 

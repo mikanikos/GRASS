@@ -4,7 +4,6 @@
 #include <vector>
 #include <string>
 #include <iostream>
-#include <string>
 #include <sstream>
 #include <iterator>
 #include <sys/types.h>
@@ -12,22 +11,14 @@
 #include <unistd.h>
 #include <list> 
 #include <map> 
+#include <set>
 #include <pthread.h>
 #include <wordexp.h>
 using namespace std;
 
-#define NB_COMMANDS 11
-
-#define MAX_THREADS 30
-
-#define PATH_MAX 128
-
 #define IS_DIRECTORY 2
 #define IS_FILE 1
 #define UNKNOWN_PATH 0
-
-char config_file[] = "grass.conf";
-char server_ip[] = "127.0.0.1";
 
 // map socket to user
 map<int, struct User> active_Users;
@@ -57,7 +48,6 @@ int do_date(const string&, const int);
 int do_whoami(const string&, const int);
 int do_w(const string&, const int);
 int do_logout(const string&, const int);
-//int do_exit(const string&, const int);
 
 typedef int (*shell_fct)(const string&, const int);
 
@@ -78,7 +68,7 @@ struct shell_map shell_cmds[NB_COMMANDS] = {
     {"rm", do_rm, 1},
     // {"get", do_get, 1},
     // {"put", do_put, 2},
-    //{"grep", do_grep, 1},
+    {"grep", do_grep, 1},
     {"date", do_date, 0},
     {"whoami", do_whoami, 0},
     {"w", do_w, 0},
@@ -97,7 +87,7 @@ void write_message(const int sock, const char *message)
 // Helper function to run commands in unix.
 void run_command(const char *command, const int sock)
 {
-    char buff[1024], result[1024] = "";
+    char buff[MAX_BUFF_SIZE], result[MAX_BUFF_SIZE] = "";
     FILE *fp;
 
     string com(command);
@@ -153,7 +143,7 @@ int do_login(const string& name, const int sock)
 
     // search for user in paramters of config file 
     for (auto const& it : userList) {
-        if (strcmp(it.uname, name.c_str()) == 0) {
+        if (it.uname == name) {
             // add to map in order to keep track the activity
             active_Users[sock] = it;
             write(sock, "", sizeof(""));
@@ -172,7 +162,7 @@ int do_pass(const string& name, const int sock)
     it = active_Users.find(sock);
     if (it != active_Users.end()) {
         // password found, authentication is successful
-        if (strcmp((it->second).pass, name.c_str()) == 0) {
+        if ((it->second).pass == name) {
             (it->second).isLoggedIn = true;
             write(sock, "", sizeof(""));
         }
@@ -241,9 +231,7 @@ int do_ping(const string& name, const int sock)
         return 1;
     }
 
-    string command;
-    command = "ping " + name + " -c 1";
-    run_command(command.c_str(), sock);
+    run_command(("ping " + name + " -c 1").c_str(), sock);
     return 0;
 }
 
@@ -256,9 +244,7 @@ int do_ls(const string& name, const int sock)
         return 1;
     }
 
-    string command;
-    command = string("ls -l ") + active_Users[sock].cwd;
-    run_command(command.c_str(), sock);
+    run_command((string("ls -l ") + active_Users[sock].cwd).c_str(), sock);
     return 0;
 }
 
@@ -271,7 +257,7 @@ int do_grep(const string& name, const int sock)
         return 1;
     }
 
-    run_command(("grep -rl " + name + " " + active_Users[sock].cwd).c_str(), sock);
+    run_command(("grep -rl " + name + " | sort -t: -n -k2").c_str(), sock);
     return 0;
 }
 
@@ -316,7 +302,7 @@ int do_cd(const string& name, const int sock)
         }
 
         //chdir(nname.c_str());
-        strcpy(active_Users[sock].cwd, nname.c_str());
+        strcpy(active_Users[sock].cwd, realpath(nname.c_str(), NULL));
         write(sock, "", sizeof(""));
     }
     else
@@ -347,8 +333,6 @@ int do_mkdir(const string& name, const int sock)
         return 1;
     }
 
-    string command;
-
     // using user cwd
     string nname = string(active_Users[sock].cwd) + "/" + name;
     
@@ -375,8 +359,7 @@ int do_mkdir(const string& name, const int sock)
             }
         }
 
-        command = "mkdir " + nname;
-        run_command(command.c_str(), sock);
+        run_command(("mkdir " + nname).c_str(), sock);
     }
     else {
         write_message(sock, ("mkdir: cannot create '" + name + "': File exists\n").c_str());
@@ -400,8 +383,6 @@ int do_rm(const string& name, const int sock)
         return 1;
     }
 
-    string command;
-
     // using user cwd
     string nname = string(active_Users[sock].cwd) + "/" + name;
 
@@ -416,8 +397,7 @@ int do_rm(const string& name, const int sock)
             return 1;
         }
 
-        command = "rm -r " + nname;
-        run_command(command.c_str(), sock);
+        run_command(("rm -r " + nname).c_str(), sock);
     }
     else {
         write_message(sock, ("rm: cannot remove '" + name + "': No such file or directory\n").c_str());
@@ -446,8 +426,6 @@ int check_path(const string& path)
 
 int do_w(const string& name, const int sock)
 {
-    char res[1024] = "";
-
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
         active_Users.erase(sock);
@@ -456,22 +434,23 @@ int do_w(const string& name, const int sock)
     }
 
     // go through all the active users in the system and check who's loggedin
+    std::set<std::string> sortedUsers;
     for (auto const& it : active_Users) {
         if ((it.second).isLoggedIn) {
-            strcat(res, (it.second).uname);
-            strcat(res, " ");
+            sortedUsers.insert((it.second).uname);
         }
     }
-    strcat(res, "\n");
 
-    write_message(sock, res);
+    // sort users names
+    ostringstream stream;
+    copy(sortedUsers.begin(), sortedUsers.end(), std::ostream_iterator<std::string>(stream, " "));
+
+    write_message(sock, (stream.str() + "\n").c_str());
     return 0;
 }
 
 int do_whoami(const string& name, const int sock)
 {
-    char res[1024] = "";
-
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
         active_Users.erase(sock);
@@ -483,9 +462,7 @@ int do_whoami(const string& name, const int sock)
     map<int, struct User>::iterator it;
     it = active_Users.find(sock);
     if (it != active_Users.end()) {
-        strcpy(res, (it->second).uname);
-        strcat(res, "\n");
-        write_message(sock, res);
+        write_message(sock, ((it->second).uname + "\n").c_str());
     }
     // if user not found, it means that the user is not authenticated but it still accessed the command execution statement (there's a problem) 
     else {
@@ -641,10 +618,8 @@ void parse_grass()
                             
                             // store users in usersList
                             struct User u;
-                            u.uname = (char*) malloc(strlen(name)+1);
-                            u.pass = (char*) malloc(strlen(pass)+1);
-                            strcpy(u.uname, name);
-                            strcpy(u.pass, pass);
+                            u.uname = string(name);
+                            u.pass = string(pass);
                             strcpy(u.cwd, curr_dir);
                             u.isLoggedIn = false;
                             userList.push_back(u);

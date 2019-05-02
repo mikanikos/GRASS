@@ -97,7 +97,7 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    char buff[1024];
+    char buff[MAX_BUFF_SIZE];
     int n;
 
     if (automated_mode)
