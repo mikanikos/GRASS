@@ -1,4 +1,4 @@
-#include <grass.h>
+#include <server.h>
 #include <errmsg.h>
 #include <ctype.h>
 #include <vector>
@@ -14,11 +14,16 @@
 #include <set>
 #include <pthread.h>
 #include <wordexp.h>
+#include <sys/stat.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <string.h>
 using namespace std;
-
-#define IS_DIRECTORY 2
-#define IS_FILE 1
-#define UNKNOWN_PATH 0
 
 // map socket to user
 map<int, struct User> active_Users;
@@ -29,52 +34,8 @@ list<struct User> userList;
 char port[7];
 char curr_dir[PATH_MAX];
 
-// Handle threads
+// initialize lock
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-
-int check_authentication(const int);
-int check_path(const string&);
-int do_login(const string&, const int);
-int do_pass(const string&, const int);
-int do_ping(const string&, const int);
-int do_ls(const string&, const int);
-int do_cd(const string&, const int);
-int do_mkdir(const string&, const int);
-int do_rm(const string&, const int);
-//int do_get(const string&, const int);
-//int do_put(const string&, const int);
-int do_grep(const string&, const int);
-int do_date(const string&, const int);
-int do_whoami(const string&, const int);
-int do_w(const string&, const int);
-int do_logout(const string&, const int);
-
-typedef int (*shell_fct)(const string&, const int);
-
-struct shell_map
-{
-    const char *name;
-    shell_fct fct;
-    size_t argc;
-};
-
-struct shell_map shell_cmds[NB_COMMANDS] = {
-    {"login", do_login, 1},
-    {"pass", do_pass, 1},
-    {"ping", do_ping, 1},
-    {"ls", do_ls, 0},
-    {"cd", do_cd, 1},
-    {"mkdir", do_mkdir, 1},
-    {"rm", do_rm, 1},
-    // {"get", do_get, 1},
-    // {"put", do_put, 2},
-    {"grep", do_grep, 1},
-    {"date", do_date, 0},
-    {"whoami", do_whoami, 0},
-    {"w", do_w, 0},
-    {"logout", do_logout, 0},
-    // {"exit", do_exit, 0},
-};
 
 
 // function to write message to the client and server console
@@ -132,15 +93,6 @@ void recv_file(const int fp, const int sock, const int size)
 
 int do_login(const string& name, const int sock)
 {
-    // user alredy logged in has to logout for re-issuing this command
-    // map<int, struct User>::iterator it;
-    // it = active_Users.find(sock);
-    // if (it != active_Users.end() && (it->second).isLoggedIn) {
-    //     //strcpy(res, "You're alreaddy logged in\n");
-    //     write(sock, res, sizeof(res));
-    //     return 1;
-    // }
-
     // search for user in paramters of config file 
     for (auto const& it : userList) {
         if (it.uname == name) {
@@ -494,7 +446,7 @@ void handle_input(const char *command, const int sock)
         return;
     }
     else if (p.we_wordc == 0) {
-        write_message(sock, ERR_UNAUTHORISED_CHARS);
+        write_message(sock, ERR_UNDEFINED_CHARS);
         return;
     }
 
@@ -570,7 +522,7 @@ void search(char *pattern)
 void parse_grass()
 {
     char *s, *t;
-    FILE *fp = fopen(config_file, "r");
+    FILE *fp = fopen(config_file.c_str(), "r");
 
     if (fp == NULL) {
         perror("No configuration file found");
@@ -661,7 +613,7 @@ int main()
 
     struct sockaddr_in s_addr;
     s_addr.sin_family = AF_INET;
-    s_addr.sin_addr.s_addr = inet_addr(server_ip);
+    s_addr.sin_addr.s_addr = inet_addr(server_ip.c_str());
     s_addr.sin_port = htons(atoi(port));
 
     // BIND
@@ -678,7 +630,7 @@ int main()
         exit(1);
     }
     else {
-        string message = "Listening on address " + string(server_ip) + " and port " + string(port);
+        string message = "Listening on address " + server_ip + " and port " + string(port);
         perror(message.c_str());
     }
 

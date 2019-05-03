@@ -6,6 +6,15 @@
 #include <fstream>
 #include <stdlib.h>
 #include <stdio.h>
+#include <sys/stat.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <string.h>
 
 using namespace std;
 
