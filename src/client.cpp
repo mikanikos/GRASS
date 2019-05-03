@@ -19,6 +19,14 @@ struct args_put
     const char *file;
 };
 
+struct args_get
+{
+    const char *file;
+    int filesize;
+    int port;
+    char *path;
+};
+
 /*
  * Send a file to the server as its own thread
  *
@@ -48,9 +56,59 @@ void send_file(FILE *fp, int sock)
  * d_port: destination port
  * size: the size (in bytes) of the file to recv
  */
-void recv_file(int fp, int d_port, int size)
+void recv_file(FILE *fp, int size, int sock)
 {
-    // TODO
+    char revbuf[1024];
+    bzero(revbuf, 1024);
+    int f_block_sz = 0;
+    int total_size_recv = 0;
+    int to_be_transferred = size;
+    while (f_block_sz = recv(sock, revbuf, 1024, 0))
+    {
+        if (f_block_sz < 0)
+        {
+            printf(ERR_TRANSFER);
+            fclose(fp);
+            close(sock);
+            return;
+        }
+        total_size_recv += f_block_sz;
+        if (to_be_transferred > f_block_sz)
+        {
+            int write_sz = fwrite(revbuf, sizeof(char), f_block_sz, fp);
+            if (write_sz < f_block_sz)
+            {
+                printf(ERR_TRANSFER);
+                fclose(fp);
+                close(sock);
+                return;
+            }
+            to_be_transferred -= f_block_sz;
+        }
+        else
+        {
+            int write_sz = fwrite(revbuf, sizeof(char), to_be_transferred, fp);
+            if (write_sz < to_be_transferred)
+            {
+                printf(ERR_TRANSFER);
+                fclose(fp);
+                close(sock);
+                return;
+            }
+            to_be_transferred = 0;
+        }
+
+        bzero(revbuf, 1024);
+    }
+    fclose(fp);
+
+    // if the transferred stream’s size doesn’t match with the specified size
+    if (total_size_recv != size)
+    {
+        printf(ERR_TRANSFER);
+        close(sock);
+        return;
+    }
 }
 
 /*
@@ -138,6 +196,58 @@ void *do_put(void *args)
     close(sock);
 }
 
+void *do_get(void *args)
+{
+    int port = ((struct args_get *)args)->port;
+    char *path = ((struct args_get *)args)->path;
+    const char *file = ((struct args_get *)args)->file;
+    int filesize = ((struct args_get *)args)->filesize;
+
+    int sock;
+
+    // CREATION
+    sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0)
+    {
+        printf(ERR_TRANSFER);
+        return NULL;
+    }
+
+    struct sockaddr_in s_addr;
+    s_addr.sin_family = AF_INET;
+    s_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    s_addr.sin_port = htons(port);
+    if (inet_pton(AF_INET, "127.0.0.1", &s_addr.sin_addr) < 0)
+    {
+        printf(ERR_TRANSFER);
+        return NULL;
+    }
+
+    // CONNECTION
+    if (connect(sock, (struct sockaddr *)&s_addr, sizeof(s_addr)) < 0)
+    {
+        printf(ERR_TRANSFER);
+        return NULL;
+    }
+
+    char file_path[1024];
+    strcpy(file_path, path);
+    strcat(file_path, "/");
+    strcat(file_path, file);
+    char *f_name = file_path;
+    FILE *fp = fopen(f_name, "w+");
+    if (fp == NULL)
+    {
+        printf(ERR_TRANSFER);
+        close(sock);
+        return NULL;
+    }
+    else
+    {
+        recv_file(fp, filesize, sock);
+    }
+}
+
 void handle_file_transfer(char *in, char *cmd, char *path, int sock)
 {
     string input(in);
@@ -168,6 +278,28 @@ void handle_file_transfer(char *in, char *cmd, char *path, int sock)
         }
 
         // Check if the server has successfully received the file or not
+        char buff[1024];
+        bzero(buff, sizeof(buff));
+        read(sock, buff, sizeof(buff));
+        printf("%s", buff);
+    }
+
+    if (tokens_in[0] == "get")
+    {
+        struct args_get *args = (struct args_get *)malloc(sizeof(struct args_get));
+        args->port = atoi(tokens_in[2].c_str());
+        args->file = tokens_cmd[1].c_str();
+        args->filesize = atoi(tokens_in[4].c_str());
+        args->path = path;
+
+        pthread_t t;
+
+        if (pthread_create(&t, NULL, do_get, (void *)args) != 0)
+        {
+            perror("thread creation failed");
+        }
+
+        // Check if the server has successfully transferred the file or not
         char buff[1024];
         bzero(buff, sizeof(buff));
         read(sock, buff, sizeof(buff));

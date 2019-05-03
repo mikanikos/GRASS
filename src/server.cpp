@@ -15,7 +15,7 @@
 #include <pthread.h>
 using namespace std;
 
-#define NB_COMMANDS 12
+#define NB_COMMANDS 13
 
 #define MAX_THREADS 30
 
@@ -37,7 +37,7 @@ int PORT = 31337;
 // Handle threads
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
-struct args_put
+struct args_getput
 {
     int sock;
     int filesize;
@@ -54,7 +54,7 @@ int do_ls(vector<string>, int);
 int do_cd(vector<string>, int);
 int do_mkdir(vector<string>, int);
 int do_rm(vector<string>, int);
-//int do_get(vector<string> name, int sock);
+int do_get(vector<string> name, int sock);
 int do_put(vector<string> name, int sock);
 //int do_grep(vector<string> name, int sock);
 int do_date(vector<string>, int);
@@ -80,7 +80,7 @@ struct shell_map shell_cmds[NB_COMMANDS] = {
     {"cd", do_cd, 1},
     {"mkdir", do_mkdir, 1},
     {"rm", do_rm, 1},
-    // {"get", do_get, 1},
+    {"get", do_get, 1},
     {"put", do_put, 2},
     //{"grep", do_grep, 1},
     {"date", do_date, 0},
@@ -117,17 +117,6 @@ void run_command(const char *command, int sock)
  * sock: socket that has already been created.
  */
 void send_file(int fp, int sock)
-{
-}
-
-/*
- * Send a file to the server as its own thread
- *
- * fp: file descriptor of file to save to.
- * sock: socket that has already been created.
- * size: the size (in bytes) of the file to recv
- */
-void recv_file(int fp, int sock, int size)
 {
 }
 
@@ -454,12 +443,16 @@ int do_whoami(vector<string> name, int sock)
     return 0;
 }
 
-void *put(void *args)
+/*
+ * Send a file to the server as its own thread
+ *
+ */
+void *recv_file(void *args)
 {
-    int sock = ((struct args_put *)args)->sock;
-    int filesize = ((struct args_put *)args)->filesize;
-    const char *filename = ((struct args_put *)args)->filename;
-    int port = ((struct args_put *)args)->port;
+    int sock = ((struct args_getput *)args)->sock;         // socket that has already been created.
+    int filesize = ((struct args_getput *)args)->filesize; // the size (in bytes) of the file to recv
+    const char *filename = ((struct args_getput *)args)->filename;
+    int port = ((struct args_getput *)args)->port;
 
     char res[1024];
 
@@ -469,11 +462,11 @@ void *put(void *args)
     write(sock, res, sizeof(res));
     bzero(res, 1024);
 
-    int sockfd;
+    int sock_new;
 
     // CREATION
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd < 0)
+    sock_new = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock_new < 0)
     {
         printf("creation failed\n");
         strcpy(res, ERR_TRANSFER);
@@ -495,7 +488,7 @@ void *put(void *args)
     // CONNECTION
     // try to connect until the client is listening to the port
     clock_t timeStart = clock();
-    while (connect(sockfd, (struct sockaddr *)&s_addr, sizeof(s_addr)) < 0)
+    while (connect(sock_new, (struct sockaddr *)&s_addr, sizeof(s_addr)) < 0)
     {
         if ((clock() - timeStart) / CLOCKS_PER_SEC >= 30) // time in seconds
         {
@@ -508,10 +501,9 @@ void *put(void *args)
     FILE *fp = fopen(filename, "w+");
     if (fp == NULL)
     {
-        printf("test1\n");
         strcpy(res, ERR_TRANSFER);
         write(sock, res, sizeof(res));
-        close(sockfd);
+        close(sock_new);
         return NULL;
     }
     else
@@ -520,15 +512,14 @@ void *put(void *args)
         int f_block_sz = 0;
         int total_size_recv = 0;
         int to_be_transferred = filesize;
-        while (f_block_sz = recv(sockfd, revbuf, 1024, 0))
+        while (f_block_sz = recv(sock_new, revbuf, 1024, 0))
         {
             if (f_block_sz < 0)
             {
-                printf("test2\n");
                 strcpy(res, ERR_TRANSFER);
                 write(sock, res, sizeof(res));
                 fclose(fp);
-                close(sockfd);
+                close(sock_new);
                 return NULL;
             }
             total_size_recv += f_block_sz;
@@ -537,11 +528,10 @@ void *put(void *args)
                 int write_sz = fwrite(revbuf, sizeof(char), f_block_sz, fp);
                 if (write_sz < f_block_sz)
                 {
-                    printf("check1\n");
                     strcpy(res, ERR_TRANSFER);
                     write(sock, res, sizeof(res));
                     fclose(fp);
-                    close(sockfd);
+                    close(sock_new);
                     return NULL;
                 }
                 to_be_transferred -= f_block_sz;
@@ -555,7 +545,7 @@ void *put(void *args)
                     strcpy(res, ERR_TRANSFER);
                     write(sock, res, sizeof(res));
                     fclose(fp);
-                    close(sockfd);
+                    close(sock_new);
                     return NULL;
                 }
                 to_be_transferred = 0;
@@ -571,13 +561,13 @@ void *put(void *args)
             printf("file transfer failed\n");
             strcpy(res, ERR_TRANSFER);
             write(sock, res, sizeof(res));
-            close(sockfd);
+            close(sock_new);
             return NULL;
         }
     }
 
     write(sock, "", sizeof(""));
-    close(sockfd);
+    close(sock_new);
 }
 
 int do_put(vector<string> name, int sock)
@@ -602,18 +592,154 @@ int do_put(vector<string> name, int sock)
         return 1;
     }
 
-    // choose a port and send it to the client
-    PORT++;
-
     pthread_t t;
 
-    struct args_put *args = (struct args_put *)malloc(sizeof(struct args_put));
+    PORT++;
+    struct args_getput *args = (struct args_getput *)malloc(sizeof(struct args_getput));
     args->sock = sock;
     args->filesize = filesize;
     args->filename = filename;
     args->port = PORT;
 
-    if (pthread_create(&t, NULL, put, (void *)args) != 0)
+    if (pthread_create(&t, NULL, recv_file, (void *)args) != 0)
+    {
+        perror("thread creation failed");
+    }
+
+    return 0;
+}
+
+/*
+ * Send a file to the client as its own thread
+ *
+ */
+void *send_file(void *args)
+{
+    int sock = ((struct args_getput *)args)->sock; // socket that has already been created.
+    const char *filename = ((struct args_getput *)args)->filename;
+    int port = ((struct args_getput *)args)->port;
+
+    char res[1024];
+
+    FILE *fp = fopen(filename, "r");
+    if (fp == NULL)
+    {
+        strcpy(res, ERR_FILE_NOT_FOUND);
+        write(sock, res, sizeof(res));
+        return NULL;
+    }
+    fseek(fp, 0, SEEK_END);
+    long int filesize = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+
+    // CREATION
+    int sock_get;
+
+    sock_get = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock_get < 0)
+    {
+        perror("creation failed\n");
+        strcpy(res, ERR_TRANSFER);
+        write(sock, res, sizeof(res));
+        return NULL;
+    }
+
+    struct sockaddr_in s_addr;
+    s_addr.sin_family = AF_INET;
+    s_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    s_addr.sin_port = htons(port);
+
+    // BIND
+    if ((bind(sock_get, (struct sockaddr *)&s_addr, sizeof(s_addr))) < 0)
+    {
+        perror("bind failed\n");
+        strcpy(res, ERR_TRANSFER);
+        write(sock, res, sizeof(res));
+        close(sock_get);
+        return NULL;
+    }
+
+    // START LISTENING
+    if ((listen(sock_get, 1)) < 0)
+    {
+        perror("listen failed\n");
+        strcpy(res, ERR_TRANSFER);
+        write(sock, res, sizeof(res));
+        close(sock_get);
+        return NULL;
+    }
+
+    strcpy(res, "get port: ");
+    strcat(res, std::to_string(port).c_str());
+    strcat(res, " size: ");
+    strcat(res, std::to_string(filesize).c_str());
+    strcat(res, "\n");
+    write(sock, res, sizeof(res));
+
+    struct sockaddr_in c_addr;
+    int c_addr_len = sizeof(c_addr);
+    int sock_new;
+    sock_new = accept(sock_get, (struct sockaddr *)&c_addr, (socklen_t *)&c_addr_len);
+    if (sock_new < 0)
+    {
+        perror("accept failed\n");
+        strcpy(res, ERR_TRANSFER);
+        write(sock, res, sizeof(res));
+        close(sock_get);
+        close(sock_new);
+        return NULL;
+    }
+
+    char sdbuf[1024]; // send buffer
+    bzero(sdbuf, 1024);
+    int f_block_sz;
+
+    while ((f_block_sz = fread(sdbuf, sizeof(char), 1024, fp)) > 0)
+    {
+        if (send(sock_new, sdbuf, f_block_sz, 0) < 0)
+        {
+            strcpy(res, ERR_TRANSFER);
+            write(sock, res, sizeof(res));
+            break;
+        }
+        bzero(sdbuf, 1024);
+    }
+    write(sock, "", sizeof("")); // notify the client that the transfer is successfull
+    close(sock_new);
+    close(sock_get);
+}
+
+int do_get(vector<string> name, int sock)
+{
+    const char *filename = name[1].c_str();
+    char res[1024];
+
+    // check if the user is allowed to execute the command
+    if (!check_authentication(sock))
+    {
+        strcpy(res, ISSUE_LOGIN_MES);
+        write(sock, res, sizeof(res));
+        return 1;
+    }
+
+    // check if the filename is not too long
+    if (strlen(filename) > 128)
+    {
+        strcpy(res, ERR_PATH_TOO_LONG);
+        write(sock, res, sizeof(res));
+        return 1;
+    }
+
+    int port = ++PORT;
+
+    pthread_t t;
+
+    struct args_getput *args = (struct args_getput *)malloc(sizeof(struct args_getput));
+    args->sock = sock;
+    args->filename = filename;
+    args->port = port;
+
+    if (pthread_create(&t, NULL, send_file, (void *)args) != 0)
     {
         perror("thread creation failed");
     }
