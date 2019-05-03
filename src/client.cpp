@@ -11,18 +11,24 @@
 using namespace std;
 
 #define PATH_MAX 1024
+
+struct args_put
+{
+    int port;
+    char *path;
+    const char *file;
+};
+
 /*
  * Send a file to the server as its own thread
  *
  * fp: file descriptor of file to send
  * d_port: destination port
  */
-void send_file(FILE *fp, int d_port, int sock)
+void send_file(FILE *fp, int sock)
 {
     char sdbuf[1024]; // Send buffer
     bzero(sdbuf, 1024);
-    // printf("sending file put\n");
-    // fflush(stdout);
     int f_block_sz;
     while ((f_block_sz = fread(sdbuf, sizeof(char), 1024, fp)) > 0)
     {
@@ -33,8 +39,6 @@ void send_file(FILE *fp, int d_port, int sock)
         }
         bzero(sdbuf, 1024);
     }
-    // printf("send success put\n");
-    // fflush(stdout);
 }
 
 /*
@@ -65,10 +69,12 @@ void signalHandler(int sig_num)
 {
 }
 
-void do_put(int port, char *path, const char *file, int size)
+void *do_put(void *args)
 {
-    // printf("start put\n");
-    // fflush(stdout);
+    int port = ((struct args_put *)args)->port;
+    char *path = ((struct args_put *)args)->path;
+    const char *file = ((struct args_put *)args)->file;
+
     // CREATION
     int sock;
 
@@ -76,7 +82,7 @@ void do_put(int port, char *path, const char *file, int size)
     if (sock < 0)
     {
         perror("creation failed\n");
-        return;
+        return NULL;
     }
 
     struct sockaddr_in s_addr;
@@ -89,7 +95,7 @@ void do_put(int port, char *path, const char *file, int size)
     {
         perror("bind failed\n");
         close(sock);
-        return;
+        return NULL;
     }
 
     // START LISTENING
@@ -97,10 +103,8 @@ void do_put(int port, char *path, const char *file, int size)
     {
         perror("listen failed\n");
         close(sock);
-        return;
+        return NULL;
     }
-    // printf("listening put\n");
-    // fflush(stdout);
 
     struct sockaddr_in c_addr;
     int c_addr_len = sizeof(c_addr);
@@ -108,10 +112,10 @@ void do_put(int port, char *path, const char *file, int size)
     sock_new = accept(sock, (struct sockaddr *)&c_addr, (socklen_t *)&c_addr_len);
     if (sock_new < 0)
     {
-        printf("accept failed\n");
+        perror("accept failed\n");
         close(sock);
         close(sock_new);
-        return;
+        return NULL;
     }
     char file_path[1024];
     strcpy(file_path, path);
@@ -120,7 +124,15 @@ void do_put(int port, char *path, const char *file, int size)
     char *f_name = file_path;
 
     FILE *fp = fopen(f_name, "r");
-    send_file(fp, port, sock_new);
+    if (fp == NULL)
+    {
+        printf(ERR_FILE_NOT_FOUND);
+        close(sock_new);
+        close(sock);
+        return NULL;
+    }
+
+    send_file(fp, sock_new);
 
     close(sock_new);
     close(sock);
@@ -143,16 +155,17 @@ void handle_file_transfer(char *in, char *cmd, char *path, int sock)
 
     if (tokens_in[0] == "put")
     {
-        int port = atoi(tokens_in[2].c_str());
-        const char *file = tokens_cmd[1].c_str();
-        FILE *fp = fopen(file, "r");
-        if (fp == NULL)
+        struct args_put *args = (struct args_put *)malloc(sizeof(struct args_put));
+        args->port = atoi(tokens_in[2].c_str());
+        args->file = tokens_cmd[1].c_str();
+        args->path = path;
+
+        pthread_t t;
+
+        if (pthread_create(&t, NULL, do_put, (void *)args) != 0)
         {
-            printf(ERR_FILE_NOT_FOUND);
-            return;
+            perror("thread creation failed");
         }
-        int file_sz = atoi(tokens_cmd[2].c_str());
-        do_put(port, path, file, file_sz);
 
         // Check if the server has successfully received the file or not
         char buff[1024];

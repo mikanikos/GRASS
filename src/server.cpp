@@ -37,6 +37,14 @@ int PORT = 31337;
 // Handle threads
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
+struct args_put
+{
+    int sock;
+    int filesize;
+    const char *filename;
+    int port;
+};
+
 int check_authentication(int);
 int check_path(string);
 int do_login(vector<string>, int);
@@ -446,6 +454,132 @@ int do_whoami(vector<string> name, int sock)
     return 0;
 }
 
+void *put(void *args)
+{
+    int sock = ((struct args_put *)args)->sock;
+    int filesize = ((struct args_put *)args)->filesize;
+    const char *filename = ((struct args_put *)args)->filename;
+    int port = ((struct args_put *)args)->port;
+
+    char res[1024];
+
+    strcpy(res, "put port: ");
+    strcat(res, std::to_string(port).c_str());
+    strcat(res, "\n");
+    write(sock, res, sizeof(res));
+    bzero(res, 1024);
+
+    int sockfd;
+
+    // CREATION
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0)
+    {
+        printf("creation failed\n");
+        strcpy(res, ERR_TRANSFER);
+        write(sock, res, sizeof(res));
+        return NULL;
+    }
+
+    struct sockaddr_in s_addr;
+    s_addr.sin_family = AF_INET;
+    s_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    s_addr.sin_port = htons(port);
+    if (inet_pton(AF_INET, "127.0.0.1", &s_addr.sin_addr) < 0)
+    {
+        printf("invalid address\n");
+        strcpy(res, ERR_TRANSFER);
+        write(sock, res, sizeof(res));
+        return NULL;
+    }
+    // CONNECTION
+    // try to connect until the client is listening to the port
+    clock_t timeStart = clock();
+    while (connect(sockfd, (struct sockaddr *)&s_addr, sizeof(s_addr)) < 0)
+    {
+        if ((clock() - timeStart) / CLOCKS_PER_SEC >= 30) // time in seconds
+        {
+            printf("timeout (30 seconds)\n");
+            return NULL;
+        }
+    }
+
+    char revbuf[1024];
+    FILE *fp = fopen(filename, "w+");
+    if (fp == NULL)
+    {
+        printf("test1\n");
+        strcpy(res, ERR_TRANSFER);
+        write(sock, res, sizeof(res));
+        close(sockfd);
+        return NULL;
+    }
+    else
+    {
+        bzero(revbuf, 1024);
+        int f_block_sz = 0;
+        int total_size_recv = 0;
+        int to_be_transferred = filesize;
+        while (f_block_sz = recv(sockfd, revbuf, 1024, 0))
+        {
+            if (f_block_sz < 0)
+            {
+                printf("test2\n");
+                strcpy(res, ERR_TRANSFER);
+                write(sock, res, sizeof(res));
+                fclose(fp);
+                close(sockfd);
+                return NULL;
+            }
+            total_size_recv += f_block_sz;
+            if (to_be_transferred > f_block_sz)
+            {
+                int write_sz = fwrite(revbuf, sizeof(char), f_block_sz, fp);
+                if (write_sz < f_block_sz)
+                {
+                    printf("check1\n");
+                    strcpy(res, ERR_TRANSFER);
+                    write(sock, res, sizeof(res));
+                    fclose(fp);
+                    close(sockfd);
+                    return NULL;
+                }
+                to_be_transferred -= f_block_sz;
+            }
+            else
+            {
+                int write_sz = fwrite(revbuf, sizeof(char), to_be_transferred, fp);
+                if (write_sz < to_be_transferred)
+                {
+                    printf("check2\n");
+                    strcpy(res, ERR_TRANSFER);
+                    write(sock, res, sizeof(res));
+                    fclose(fp);
+                    close(sockfd);
+                    return NULL;
+                }
+                to_be_transferred = 0;
+            }
+
+            bzero(revbuf, 1024);
+        }
+        fclose(fp);
+
+        // if the transferred stream’s size doesn’t match with the specified size
+        if (total_size_recv != filesize)
+        {
+            printf("file transfer failed\n");
+            strcpy(res, ERR_TRANSFER);
+            write(sock, res, sizeof(res));
+            close(sockfd);
+            return NULL;
+        }
+    }
+
+    write(sock, "", sizeof(""));
+    close(sockfd);
+}
+
 int do_put(vector<string> name, int sock)
 {
     const char *filename = name[1].c_str();
@@ -470,117 +604,20 @@ int do_put(vector<string> name, int sock)
 
     // choose a port and send it to the client
     PORT++;
-    strcpy(res, "put port: ");
-    strcat(res, std::to_string(PORT).c_str());
-    strcat(res, "\n");
-    write(sock, res, sizeof(res));
-    bzero(res, 1024);
 
-    int sockfd;
+    pthread_t t;
 
-    // CREATION
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd < 0)
+    struct args_put *args = (struct args_put *)malloc(sizeof(struct args_put));
+    args->sock = sock;
+    args->filesize = filesize;
+    args->filename = filename;
+    args->port = PORT;
+
+    if (pthread_create(&t, NULL, put, (void *)args) != 0)
     {
-        printf("creation failed\n");
-        fflush(stdout);
-        strcpy(res, ERR_TRANSFER);
-        write(sock, res, sizeof(res));
-        return 1;
+        perror("thread creation failed");
     }
 
-    struct sockaddr_in s_addr;
-    s_addr.sin_family = AF_INET;
-    s_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-    s_addr.sin_port = htons(PORT);
-    if (inet_pton(AF_INET, "127.0.0.1", &s_addr.sin_addr) < 0)
-    {
-        printf("invalid address\n");
-        fflush(stdout);
-        strcpy(res, ERR_TRANSFER);
-        write(sock, res, sizeof(res));
-        return 1;
-    }
-    // CONNECTION
-    // try to connect until the client is listening to the port
-    while (connect(sockfd, (struct sockaddr *)&s_addr, sizeof(s_addr)) < 0)
-    {
-    }
-
-    char revbuf[1024];
-    FILE *fp = fopen(filename, "w+");
-    if (fp == NULL)
-    {
-        strcpy(res, ERR_TRANSFER);
-        write(sock, res, sizeof(res));
-        close(sockfd);
-        return 1;
-    }
-    else
-    {
-        bzero(revbuf, 1024);
-        int f_block_sz = 0;
-        int total_size = 0;
-        int success = 0;
-        int to_be_transferred = filesize;
-        while (f_block_sz = recv(sockfd, revbuf, 1024, 0))
-        {
-            if (f_block_sz < 0)
-            {
-                // printf("check2\n");
-                strcpy(res, ERR_TRANSFER);
-                write(sock, res, sizeof(res));
-                fclose(fp);
-                close(sockfd);
-                return 1;
-            }
-            total_size += f_block_sz;
-            if (to_be_transferred > f_block_sz)
-            {
-                int write_sz = fwrite(revbuf, sizeof(char), f_block_sz, fp);
-                if (write_sz < f_block_sz)
-                {
-                    // printf("check1\n");
-                    strcpy(res, ERR_TRANSFER);
-                    write(sock, res, sizeof(res));
-                    fclose(fp);
-                    close(sockfd);
-                    return 1;
-                }
-                to_be_transferred -= f_block_sz;
-            }
-            else
-            {
-                int write_sz = fwrite(revbuf, sizeof(char), to_be_transferred, fp);
-                if (write_sz < to_be_transferred)
-                {
-                    // printf("check1\n");
-                    strcpy(res, ERR_TRANSFER);
-                    write(sock, res, sizeof(res));
-                    fclose(fp);
-                    close(sockfd);
-                    return 1;
-                }
-                to_be_transferred = 0;
-            }
-
-            bzero(revbuf, 1024);
-        }
-        fclose(fp);
-
-        // if the transferred stream’s size doesn’t match with the specified size
-        if (total_size != filesize)
-        {
-            // printf("file tranfer failed\n");
-            strcpy(res, ERR_TRANSFER);
-            write(sock, res, sizeof(res));
-            close(sockfd);
-            return 1;
-        }
-    }
-
-    write(sock, "", sizeof(""));
-    close(sockfd);
     return 0;
 }
 
