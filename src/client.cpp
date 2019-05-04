@@ -30,8 +30,6 @@ struct args_get
 /*
  * Send a file to the server as its own thread
  *
- * fp: file descriptor of file to send
- * d_port: destination port
  */
 void send_file(FILE *fp, int sock)
 {
@@ -42,7 +40,6 @@ void send_file(FILE *fp, int sock)
     {
         if (send(sock, sdbuf, f_block_sz, 0) < 0)
         {
-            printf(ERR_TRANSFER);
             break;
         }
         bzero(sdbuf, 1024);
@@ -52,9 +49,6 @@ void send_file(FILE *fp, int sock)
 /*
  * Recv a file from the server as its own thread
  *
- * fp: file descriptor of file to save to.
- * d_port: destination port
- * size: the size (in bytes) of the file to recv
  */
 void recv_file(FILE *fp, int size, int sock)
 {
@@ -139,7 +133,6 @@ void *do_put(void *args)
     sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0)
     {
-        perror("creation failed\n");
         return NULL;
     }
 
@@ -151,7 +144,6 @@ void *do_put(void *args)
     // BIND
     if ((bind(sock, (struct sockaddr *)&s_addr, sizeof(s_addr))) < 0)
     {
-        perror("bind failed\n");
         close(sock);
         return NULL;
     }
@@ -159,7 +151,6 @@ void *do_put(void *args)
     // START LISTENING
     if ((listen(sock, 1)) < 0)
     {
-        perror("listen failed\n");
         close(sock);
         return NULL;
     }
@@ -170,7 +161,6 @@ void *do_put(void *args)
     sock_new = accept(sock, (struct sockaddr *)&c_addr, (socklen_t *)&c_addr_len);
     if (sock_new < 0)
     {
-        perror("accept failed\n");
         close(sock);
         close(sock_new);
         return NULL;
@@ -182,13 +172,6 @@ void *do_put(void *args)
     char *f_name = file_path;
 
     FILE *fp = fopen(f_name, "r");
-    if (fp == NULL)
-    {
-        printf(ERR_FILE_NOT_FOUND);
-        close(sock_new);
-        close(sock);
-        return NULL;
-    }
 
     send_file(fp, sock_new);
 

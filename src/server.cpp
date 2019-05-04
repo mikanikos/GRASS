@@ -37,6 +37,13 @@ int PORT = 31337;
 // Handle threads
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
+// function to write message to the client and server console
+void write_message(const int sock, const char *message)
+{
+    write(sock, message, 1024);
+    printf("%s", message);
+}
+
 struct args_getput
 {
     int sock;
@@ -458,9 +465,7 @@ void *recv_file(void *args)
     sock_new = socket(AF_INET, SOCK_STREAM, 0);
     if (sock_new < 0)
     {
-        printf("creation failed\n");
-        strcpy(res, ERR_TRANSFER);
-        write(sock, res, sizeof(res));
+        write_message(sock, ERR_TRANSFER);
         return NULL;
     }
 
@@ -470,9 +475,7 @@ void *recv_file(void *args)
     s_addr.sin_port = htons(port);
     if (inet_pton(AF_INET, "127.0.0.1", &s_addr.sin_addr) < 0)
     {
-        printf("invalid address\n");
-        strcpy(res, ERR_TRANSFER);
-        write(sock, res, sizeof(res));
+        write_message(sock, ERR_TRANSFER);
         return NULL;
     }
     // CONNECTION
@@ -480,9 +483,9 @@ void *recv_file(void *args)
     clock_t timeStart = clock();
     while (connect(sock_new, (struct sockaddr *)&s_addr, sizeof(s_addr)) < 0)
     {
-        if ((clock() - timeStart) / CLOCKS_PER_SEC >= 30) // time in seconds
+        if ((clock() - timeStart) / CLOCKS_PER_SEC >= 20) // time in seconds
         {
-            printf("timeout (30 seconds)\n");
+            write_message(sock, ERR_TRANSFER);
             return NULL;
         }
     }
@@ -491,8 +494,7 @@ void *recv_file(void *args)
     FILE *fp = fopen(filename, "w+");
     if (fp == NULL)
     {
-        strcpy(res, ERR_TRANSFER);
-        write(sock, res, sizeof(res));
+        write_message(sock, ERR_TRANSFER);
         close(sock_new);
         return NULL;
     }
@@ -506,8 +508,7 @@ void *recv_file(void *args)
         {
             if (f_block_sz < 0)
             {
-                strcpy(res, ERR_TRANSFER);
-                write(sock, res, sizeof(res));
+                write_message(sock, ERR_TRANSFER);
                 fclose(fp);
                 close(sock_new);
                 return NULL;
@@ -518,8 +519,7 @@ void *recv_file(void *args)
                 int write_sz = fwrite(revbuf, sizeof(char), f_block_sz, fp);
                 if (write_sz < f_block_sz)
                 {
-                    strcpy(res, ERR_TRANSFER);
-                    write(sock, res, sizeof(res));
+                    write_message(sock, ERR_TRANSFER);
                     fclose(fp);
                     close(sock_new);
                     return NULL;
@@ -531,8 +531,7 @@ void *recv_file(void *args)
                 int write_sz = fwrite(revbuf, sizeof(char), to_be_transferred, fp);
                 if (write_sz < to_be_transferred)
                 {
-                    strcpy(res, ERR_TRANSFER);
-                    write(sock, res, sizeof(res));
+                    write_message(sock, ERR_TRANSFER);
                     fclose(fp);
                     close(sock_new);
                     return NULL;
@@ -547,8 +546,7 @@ void *recv_file(void *args)
         // if the transferred stream’s size doesn’t match with the specified size
         if (total_size_recv != filesize)
         {
-            strcpy(res, ERR_TRANSFER);
-            write(sock, res, sizeof(res));
+            write_message(sock, ERR_TRANSFER);
             close(sock_new);
             return NULL;
         }
@@ -567,16 +565,14 @@ int do_put(vector<string> name, int sock)
     // check if the user is allowed to execute the command
     if (!check_authentication(sock))
     {
-        strcpy(res, ISSUE_LOGIN_MES);
-        write(sock, res, sizeof(res));
+        write_message(sock, ISSUE_LOGIN_MES);
         return 1;
     }
 
-    // check if the filename is not too long
+    // check if the filepath is not too long
     if (strlen(filename) > 128)
     {
-        strcpy(res, ERR_PATH_TOO_LONG);
-        write(sock, res, sizeof(res));
+        write_message(sock, ERR_PATH_TOO_LONG);
         return 1;
     }
 
@@ -612,8 +608,7 @@ void *send_file(void *args)
     FILE *fp = fopen(filename, "r");
     if (fp == NULL)
     {
-        strcpy(res, ERR_FILE_NOT_FOUND);
-        write(sock, res, sizeof(res));
+        write_message(sock, ERR_FILE_NOT_FOUND);
         return NULL;
     }
     fseek(fp, 0, SEEK_END);
@@ -626,9 +621,7 @@ void *send_file(void *args)
     sock_get = socket(AF_INET, SOCK_STREAM, 0);
     if (sock_get < 0)
     {
-        perror("creation failed\n");
-        strcpy(res, ERR_TRANSFER);
-        write(sock, res, sizeof(res));
+        write_message(sock, ERR_TRANSFER);
         return NULL;
     }
 
@@ -640,9 +633,7 @@ void *send_file(void *args)
     // BIND
     if ((bind(sock_get, (struct sockaddr *)&s_addr, sizeof(s_addr))) < 0)
     {
-        perror("bind failed\n");
-        strcpy(res, ERR_TRANSFER);
-        write(sock, res, sizeof(res));
+        write_message(sock, ERR_TRANSFER);
         close(sock_get);
         return NULL;
     }
@@ -650,9 +641,7 @@ void *send_file(void *args)
     // START LISTENING
     if ((listen(sock_get, 1)) < 0)
     {
-        perror("listen failed\n");
-        strcpy(res, ERR_TRANSFER);
-        write(sock, res, sizeof(res));
+        write_message(sock, ERR_TRANSFER);
         close(sock_get);
         return NULL;
     }
@@ -670,9 +659,7 @@ void *send_file(void *args)
     sock_new = accept(sock_get, (struct sockaddr *)&c_addr, (socklen_t *)&c_addr_len);
     if (sock_new < 0)
     {
-        perror("accept failed\n");
-        strcpy(res, ERR_TRANSFER);
-        write(sock, res, sizeof(res));
+        write_message(sock, ERR_TRANSFER);
         close(sock_get);
         close(sock_new);
         return NULL;
@@ -686,8 +673,7 @@ void *send_file(void *args)
     {
         if (send(sock_new, sdbuf, f_block_sz, 0) < 0)
         {
-            strcpy(res, ERR_TRANSFER);
-            write(sock, res, sizeof(res));
+            write_message(sock, ERR_TRANSFER);
             break;
         }
         bzero(sdbuf, 1024);
@@ -706,16 +692,7 @@ int do_get(vector<string> name, int sock)
     // check if the user is allowed to execute the command
     if (!check_authentication(sock))
     {
-        strcpy(res, ISSUE_LOGIN_MES);
-        write(sock, res, sizeof(res));
-        return 1;
-    }
-
-    // check if the filename is not too long
-    if (strlen(filename) > 128)
-    {
-        strcpy(res, ERR_PATH_TOO_LONG);
-        write(sock, res, sizeof(res));
+        write_message(sock, ISSUE_LOGIN_MES);
         return 1;
     }
 
