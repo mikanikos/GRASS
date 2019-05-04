@@ -11,5 +11,7 @@
 #define ERR_PATH_LONG "Error: the path is too long.\n"
 #define ERR_ACCESS_DENIED "Error: access denied.\n"
 #define ERR_UNDEFINED_CHARS "Error: undefined characters detected.\n"
+#define ERR_FILE_NOT_FOUND "Error: File not found.\n"
+#define ERR_TRANSFER "Error: file transfer failed.\n"
 
 #endif

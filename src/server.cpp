@@ -37,6 +37,15 @@ string curr_dir;
 // initialize lock
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
+int PORT = 31337;
+
+struct args_getput
+{
+    int sock;
+    int filesize;
+    const char *filename;
+    int port;
+};
 
 // function to write message to the client and server console
 void write_message(const int sock, const char *message) 
@@ -70,27 +79,6 @@ void run_command(const char *command, const int sock)
     write_message(sock, result);
 }
 
-/*
- * Send a file to the client as its own thread
- *
- * fp: file descriptor of file to send
- * sock: socket that has already been created.
- */
-void send_file(const int fp, const int sock)
-{
-}
-
-/*
- * Send a file to the server as its own thread
- *
- * fp: file descriptor of file to save to.
- * sock: socket that has already been created.
- * size: the size (in bytes) of the file to recv
- */
-void recv_file(const int fp, const int sock, const int size)
-{
-}
-
 int do_login(const string& name, const int sock)
 {
     // search for user in paramters of config file 
@@ -109,10 +97,11 @@ int do_login(const string& name, const int sock)
 int do_pass(const string& name, const int sock)
 {
     map<int, struct User>::iterator it;
-    
-    // search for the user who has tried to login 
+
+    // search for the user who has tried to login
     it = active_Users.find(sock);
-    if (it != active_Users.end()) {
+    if (it != active_Users.end())
+    {
         // password found, authentication is successful
         if ((it->second).pass == name) {
             (it->second).isLoggedIn = true;
@@ -133,18 +122,22 @@ int do_pass(const string& name, const int sock)
 // check if the user is allowed to execute/access, returns true if yes 
 int check_authentication(const int sock) {
     map<int, struct User>::iterator it;
-     
-    // search the user in the map, if not present the user is not authnticated yet (no login command), otherwise check if he completed the authentication with pass 
+
+    // search the user in the map, if not present the user is not authnticated yet (no login command), otherwise check if he completed the authentication with pass
     it = active_Users.find(sock);
-    if (it != active_Users.end()) {
-        if ((it->second).isLoggedIn) {
+    if (it != active_Users.end())
+    {
+        if ((it->second).isLoggedIn)
+        {
             return true;
         }
-        else {
+        else
+        {
             return false;
         }
     }
-    else {
+    else
+    {
         return false;
     }
 }
@@ -161,7 +154,8 @@ int do_logout(const string& name, const int sock)
     // find the user accoding to the socket fd and set the loggedin status to false
     map<int, struct User>::iterator it;
     it = active_Users.find(sock);
-    if (it != active_Users.end()) {
+    if (it != active_Users.end())
+    {
         (it->second).isLoggedIn = false;
         active_Users.erase(sock);
         write(sock, "", sizeof(""));
@@ -415,7 +409,7 @@ int do_whoami(const string& name, const int sock)
         return 1;
     }
 
-    // retrun username correspeonding to the socket fd 
+    // retrun username correspeonding to the socket fd
     map<int, struct User>::iterator it;
     it = active_Users.find(sock);
     if (it != active_Users.end()) {
@@ -424,6 +418,279 @@ int do_whoami(const string& name, const int sock)
     // if user not found, it means that the user is not authenticated but it still accessed the command execution statement (there's a problem) 
     else {
         write_message(sock, ERR_NO_USER_FOUND);
+    }
+
+    return 0;
+}
+
+/*
+ * Receive a file from the client as its own thread
+ *
+ */
+void *recv_file(void *args)
+{
+    int sock = ((struct args_getput *)args)->sock;         // socket that has already been created.
+    int filesize = ((struct args_getput *)args)->filesize; // the size (in bytes) of the file to recv
+    const char *filename = ((struct args_getput *)args)->filename;
+    int port = ((struct args_getput *)args)->port;
+
+    char res[1024];
+
+    strcpy(res, "put port: ");
+    strcat(res, std::to_string(port).c_str());
+    strcat(res, "\n");
+    write(sock, res, sizeof(res));
+    bzero(res, 1024);
+
+    int sock_new;
+
+    // CREATION
+    sock_new = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock_new < 0)
+    {
+        write_message(sock, ERR_TRANSFER);
+        return NULL;
+    }
+
+    struct sockaddr_in s_addr;
+    s_addr.sin_family = AF_INET;
+    s_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    s_addr.sin_port = htons(port);
+    if (inet_pton(AF_INET, "127.0.0.1", &s_addr.sin_addr) < 0)
+    {
+        write_message(sock, ERR_TRANSFER);
+        return NULL;
+    }
+    // CONNECTION
+    // try to connect until the client is listening to the port
+    clock_t timeStart = clock();
+    while (connect(sock_new, (struct sockaddr *)&s_addr, sizeof(s_addr)) < 0)
+    {
+        if ((clock() - timeStart) / CLOCKS_PER_SEC >= 20) // time in seconds
+        {
+            write_message(sock, ERR_TRANSFER);
+            return NULL;
+        }
+    }
+
+    char revbuf[1024];
+    FILE *fp = fopen(filename, "w+");
+    if (fp == NULL)
+    {
+        write_message(sock, ERR_TRANSFER);
+        close(sock_new);
+        return NULL;
+    }
+    else
+    {
+        bzero(revbuf, 1024);
+        int f_block_sz = 0;
+        int total_size_recv = 0;
+        int to_be_transferred = filesize;
+        while (f_block_sz = recv(sock_new, revbuf, 1024, 0))
+        {
+            if (f_block_sz < 0)
+            {
+                write_message(sock, ERR_TRANSFER);
+                fclose(fp);
+                close(sock_new);
+                return NULL;
+            }
+            total_size_recv += f_block_sz;
+            if (to_be_transferred > f_block_sz)
+            {
+                int write_sz = fwrite(revbuf, sizeof(char), f_block_sz, fp);
+                if (write_sz < f_block_sz)
+                {
+                    write_message(sock, ERR_TRANSFER);
+                    fclose(fp);
+                    close(sock_new);
+                    return NULL;
+                }
+                to_be_transferred -= f_block_sz;
+            }
+            else
+            {
+                int write_sz = fwrite(revbuf, sizeof(char), to_be_transferred, fp);
+                if (write_sz < to_be_transferred)
+                {
+                    write_message(sock, ERR_TRANSFER);
+                    fclose(fp);
+                    close(sock_new);
+                    return NULL;
+                }
+                to_be_transferred = 0;
+            }
+
+            bzero(revbuf, 1024);
+        }
+        fclose(fp);
+
+        // if the transferred stream’s size doesn’t match with the specified size
+        if (total_size_recv != filesize)
+        {
+            write_message(sock, ERR_TRANSFER);
+            close(sock_new);
+            return NULL;
+        }
+    }
+    // the transfer was a success
+    write(sock, "", sizeof(""));
+    close(sock_new);
+}
+
+int do_put(vector<string> name, int sock)
+{
+    const char *filename = name[1].c_str();
+    int filesize = atoi(name[2].c_str());
+    char res[1024];
+
+    // check if the user is allowed to execute the command
+    if (!check_authentication(sock))
+    {
+        write_message(sock, ISSUE_LOGIN_MES);
+        return 1;
+    }
+
+    // check if the filepath is not too long
+    if (strlen(filename) > 128)
+    {
+        write_message(sock, ERR_PATH_TOO_LONG);
+        return 1;
+    }
+
+    pthread_t t;
+
+    int port = PORT++;
+    struct args_getput *args = (struct args_getput *)malloc(sizeof(struct args_getput));
+    args->sock = sock;
+    args->filesize = filesize;
+    args->filename = filename;
+    args->port = port;
+
+    if (pthread_create(&t, NULL, recv_file, (void *)args) != 0)
+    {
+        perror("thread creation failed");
+    }
+
+    return 0;
+}
+
+/*
+ * Send a file to the client as its own thread
+ *
+ */
+void *send_file(void *args)
+{
+    int sock = ((struct args_getput *)args)->sock; // socket that has already been created.
+    const char *filename = ((struct args_getput *)args)->filename;
+    int port = ((struct args_getput *)args)->port;
+
+    char res[1024];
+
+    FILE *fp = fopen(filename, "r");
+    if (fp == NULL)
+    {
+        write_message(sock, ERR_FILE_NOT_FOUND);
+        return NULL;
+    }
+    fseek(fp, 0, SEEK_END);
+    long int filesize = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+
+    // CREATION
+    int sock_get;
+
+    sock_get = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock_get < 0)
+    {
+        write_message(sock, ERR_TRANSFER);
+        return NULL;
+    }
+
+    struct sockaddr_in s_addr;
+    s_addr.sin_family = AF_INET;
+    s_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    s_addr.sin_port = htons(port);
+
+    // BIND
+    if ((bind(sock_get, (struct sockaddr *)&s_addr, sizeof(s_addr))) < 0)
+    {
+        write_message(sock, ERR_TRANSFER);
+        close(sock_get);
+        return NULL;
+    }
+
+    // START LISTENING
+    if ((listen(sock_get, 1)) < 0)
+    {
+        write_message(sock, ERR_TRANSFER);
+        close(sock_get);
+        return NULL;
+    }
+
+    strcpy(res, "get port: ");
+    strcat(res, std::to_string(port).c_str());
+    strcat(res, " size: ");
+    strcat(res, std::to_string(filesize).c_str());
+    strcat(res, "\n");
+    write(sock, res, sizeof(res));
+
+    struct sockaddr_in c_addr;
+    int c_addr_len = sizeof(c_addr);
+    int sock_new;
+    sock_new = accept(sock_get, (struct sockaddr *)&c_addr, (socklen_t *)&c_addr_len);
+    if (sock_new < 0)
+    {
+        write_message(sock, ERR_TRANSFER);
+        close(sock_get);
+        close(sock_new);
+        return NULL;
+    }
+
+    char sdbuf[1024]; // send buffer
+    bzero(sdbuf, 1024);
+    int f_block_sz;
+
+    while ((f_block_sz = fread(sdbuf, sizeof(char), 1024, fp)) > 0)
+    {
+        if (send(sock_new, sdbuf, f_block_sz, 0) < 0)
+        {
+            write_message(sock, ERR_TRANSFER);
+            break;
+        }
+        bzero(sdbuf, 1024);
+    }
+    // the transfer is a success
+    write(sock, "", sizeof(""));
+    close(sock_new);
+    close(sock_get);
+}
+
+int do_get(vector<string> name, int sock)
+{
+    const char *filename = name[1].c_str();
+    char res[1024];
+
+    // check if the user is allowed to execute the command
+    if (!check_authentication(sock))
+    {
+        write_message(sock, ISSUE_LOGIN_MES);
+        return 1;
+    }
+
+    int port = PORT++;
+
+    pthread_t t;
+
+    struct args_getput *args = (struct args_getput *)malloc(sizeof(struct args_getput));
+    args->sock = sock;
+    args->filename = filename;
+    args->port = port;
+
+    if (pthread_create(&t, NULL, send_file, (void *)args) != 0)
+    {
+        perror("thread creation failed");
     }
 
     return 0;
@@ -489,7 +756,8 @@ void *connection_handler(void *sockfd)
         pthread_mutex_lock(&lock);
 
         // if exit, simply close the connection and remove user data from the active user map
-        if (strcmp(buff, "exit") == 0) {
+        if (strcmp(buff, "exit") == 0)
+        {
             active_Users.erase(sock);
             pthread_mutex_unlock(&lock);
             break;
@@ -500,7 +768,6 @@ void *connection_handler(void *sockfd)
 
         // release lock
         pthread_mutex_unlock(&lock);
-
     }
     close(sock);
     pthread_exit(0);
@@ -571,12 +838,12 @@ void parse_grass()
                     t = strtok(NULL, " ");
                     if (t != NULL)
                     {
-                        char* name = t;
+                        char *name = t;
                         t = strtok(NULL, "\n");
                         if (t != NULL)
                         {
                             char *pass = t;
-                            
+
                             // store users in usersList
                             struct User u;
                             u.uname = string(name);
@@ -649,9 +916,10 @@ int main()
             perror("accept failed");
             exit(1);
         }
-        
+
         // Create thread and handle connection for each client
-        if (pthread_create(&t, NULL, connection_handler, &sock_new) != 0) {
+        if (pthread_create(&t, NULL, connection_handler, &sock_new) != 0)
+        {
             perror("thread creation failed");
             exit(1);
         }
