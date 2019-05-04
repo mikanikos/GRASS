@@ -31,8 +31,8 @@ map<int, struct User> active_Users;
 // list of users allowed to login
 list<struct User> userList;
 
-char port[7];
-char curr_dir[PATH_MAX];
+string port;
+string curr_dir;
 
 // initialize lock
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
@@ -253,13 +253,13 @@ int do_cd(const string& name, const int sock)
     if (check_path(nname) == IS_DIRECTORY)
     {
         // check permission of path
-        if (strstr(realpath(nname.c_str(), NULL), curr_dir) == NULL) {
+        if (strstr(realpath(nname.c_str(), NULL), curr_dir.c_str()) == NULL) {
             write_message(sock, ERR_ACCESS_DENIED);
             return 1;
         }
 
         //chdir(nname.c_str());
-        strcpy(active_Users[sock].cwd, realpath(nname.c_str(), NULL));
+        active_Users[sock].cwd = string(realpath(nname.c_str(), NULL));
         write(sock, "", sizeof(""));
     }
     else
@@ -310,7 +310,7 @@ int do_mkdir(const string& name, const int sock)
             parent_path = parent_path.substr(0, pos).c_str();
             
             // check permission of path
-            if (strstr(realpath(parent_path.c_str(), NULL), curr_dir) == NULL) {
+            if (strstr(realpath(parent_path.c_str(), NULL), curr_dir.c_str()) == NULL) {
                 write_message(sock, ERR_ACCESS_DENIED);
                 return 1;
             }
@@ -349,7 +349,7 @@ int do_rm(const string& name, const int sock)
     if (check == IS_FILE || check == IS_DIRECTORY)
     {
         // check permission of path
-        if (strstr(realpath(nname.c_str(), NULL), curr_dir) == NULL) {
+        if (strstr(realpath(nname.c_str(), NULL), curr_dir.c_str()) == NULL) {
             write_message(sock, ERR_ACCESS_DENIED);
             return 1;
         }
@@ -476,7 +476,7 @@ void *connection_handler(void *sockfd)
 {
     int sock = *((int *)sockfd);
 
-    char buff[1024] = "";
+    char buff[MAX_BUFF_SIZE] = "";
 
     while (true)
     {
@@ -529,7 +529,7 @@ void parse_grass()
         exit(1);
     }
 
-    char buffer[256];
+    char buffer[MAX_BUFF_SIZE];
 
     while (fgets(buffer, sizeof(buffer), fp) != NULL)
     {
@@ -550,8 +550,8 @@ void parse_grass()
                             perror("directory in config file doesn't exist");
                             exit(1);
                         }
-                        strcpy(curr_dir, realpath(t, NULL));
-                        chdir(curr_dir);
+                        curr_dir = string(realpath(t, NULL));
+                        chdir(curr_dir.c_str());
                     }
                 }
 
@@ -561,7 +561,7 @@ void parse_grass()
                     t = strtok(NULL, "\n");
                     if (t != NULL)
                     {
-                        strcpy(port, t);
+                        port = string(t);
                     }
                 }
 
@@ -581,7 +581,7 @@ void parse_grass()
                             struct User u;
                             u.uname = string(name);
                             u.pass = string(pass);
-                            strcpy(u.cwd, curr_dir);
+                            u.cwd = curr_dir;
                             u.isLoggedIn = false;
                             userList.push_back(u);
                         }
@@ -614,7 +614,7 @@ int main()
     struct sockaddr_in s_addr;
     s_addr.sin_family = AF_INET;
     s_addr.sin_addr.s_addr = inet_addr(server_ip.c_str());
-    s_addr.sin_port = htons(atoi(port));
+    s_addr.sin_port = htons(atoi(port.c_str()));
 
     // BIND
     if ((bind(sock, (struct sockaddr *)&s_addr, sizeof(s_addr))) < 0)

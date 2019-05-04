@@ -19,7 +19,7 @@ struct User
 {
     std::string uname;
     std::string pass;
-    char cwd[MAX_BUFF_SIZE];
+    std::string cwd;
     bool isLoggedIn;
 };
 
