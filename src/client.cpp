@@ -1,4 +1,5 @@
-#include <grass.h>
+#include <client.h>
+
 #include <sys/wait.h>
 #include <signal.h>
 #include <sstream>
@@ -15,32 +16,11 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <string.h>
-
-#include <errmsg.h>
 #include <vector>
 #include <iterator>
 #include <iostream>
-
 using namespace std;
 
-#define PATH_MAX 1024
-
-struct args_put
-{
-    int port;
-    char *path;
-    const char *file;
-};
-
-struct args_get
-{
-    const char *file;
-    int filesize;
-    int port;
-    char *path;
-};
-
-static bool automated_mode = false;
 
 /*
  * Send a file to the server as its own thread
@@ -72,7 +52,7 @@ void recv_file(FILE *fp, int size, int sock)
     int f_block_sz = 0;
     int total_size_recv = 0;
     int to_be_transferred = size;
-    while (f_block_sz = recv(sock, revbuf, 1024, 0))
+    while ((f_block_sz = recv(sock, revbuf, 1024, 0)))
     {
         if (f_block_sz < 0)
         {
@@ -120,19 +100,8 @@ void recv_file(FILE *fp, int size, int sock)
     }
 }
 
-/*
- * search all files in the current directory
- * and its subdirectory for the pattern
- *
- * pattern: an extended regular expressions.
- */
-void search(char *pattern)
-{
-    // TODO
-}
-
 // catch ctrl c to not stop the program
-void signalHandler(int sig_num)
+void signalHandler(int)
 {
 }
 
@@ -148,6 +117,7 @@ void *do_put(void *args)
     sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0)
     {
+        pthread_exit(0);
         return NULL;
     }
 
@@ -160,6 +130,7 @@ void *do_put(void *args)
     if ((bind(sock, (struct sockaddr *)&s_addr, sizeof(s_addr))) < 0)
     {
         close(sock);
+        pthread_exit(0);
         return NULL;
     }
 
@@ -167,6 +138,7 @@ void *do_put(void *args)
     if ((listen(sock, 1)) < 0)
     {
         close(sock);
+        pthread_exit(0);
         return NULL;
     }
 
@@ -178,6 +150,7 @@ void *do_put(void *args)
     {
         close(sock);
         close(sock_new);
+        pthread_exit(0);
         return NULL;
     }
     char file_path[1024];
@@ -192,6 +165,9 @@ void *do_put(void *args)
 
     close(sock_new);
     close(sock);
+
+    pthread_exit(0);
+    return NULL;
 }
 
 void *do_get(void *args)
@@ -208,6 +184,7 @@ void *do_get(void *args)
     if (sock < 0)
     {
         printf(ERR_TRANSFER);
+        pthread_exit(0);
         return NULL;
     }
 
@@ -218,6 +195,7 @@ void *do_get(void *args)
     if (inet_pton(AF_INET, "127.0.0.1", &s_addr.sin_addr) < 0)
     {
         printf(ERR_TRANSFER);
+        pthread_exit(0);
         return NULL;
     }
 
@@ -225,6 +203,7 @@ void *do_get(void *args)
     if (connect(sock, (struct sockaddr *)&s_addr, sizeof(s_addr)) < 0)
     {
         printf(ERR_TRANSFER);
+        pthread_exit(0);
         return NULL;
     }
 
@@ -238,11 +217,14 @@ void *do_get(void *args)
     {
         printf(ERR_TRANSFER);
         close(sock);
+        pthread_exit(0);
         return NULL;
     }
     else
     {
         recv_file(fp, filesize, sock);
+        pthread_exit(0);
+        return NULL;
     }
 }
 
@@ -339,7 +321,7 @@ int main(int argc, char **argv)
     signal(SIGINT, signalHandler);
 
     // current local path where the client was started (used in do_put to send files from there)
-    char local_path[PATH_MAX];
+    char local_path[MAX_BUFF_SIZE];
     if (getcwd(local_path, sizeof(local_path)) == NULL)
     {
         perror("getcwd() error");

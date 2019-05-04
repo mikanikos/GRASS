@@ -1,5 +1,5 @@
 #include <server.h>
-#include <errmsg.h>
+
 #include <ctype.h>
 #include <vector>
 #include <string>
@@ -37,15 +37,6 @@ string curr_dir;
 // initialize lock
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
-int PORT = 31337;
-
-struct args_getput
-{
-    int sock;
-    int filesize;
-    const char *filename;
-    int port;
-};
 
 // function to write message to the client and server console
 void write_message(const int sock, const char *message) 
@@ -142,7 +133,7 @@ int check_authentication(const int sock) {
     }
 }
 
-int do_logout(const string& name, const int sock)
+int do_logout(const string&, const int sock)
 {
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
@@ -181,7 +172,7 @@ int do_ping(const string& name, const int sock)
     return 0;
 }
 
-int do_ls(const string& name, const int sock)
+int do_ls(const string&, const int sock)
 {
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
@@ -207,7 +198,7 @@ int do_grep(const string& name, const int sock)
     return 0;
 }
 
-int do_date(const string& name, const int sock)
+int do_date(const string&, const int sock)
 {
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
@@ -375,7 +366,7 @@ int check_path(const string& path)
     return UNKNOWN_PATH;
 }
 
-int do_w(const string& name, const int sock)
+int do_w(const string&, const int sock)
 {
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
@@ -400,7 +391,7 @@ int do_w(const string& name, const int sock)
     return 0;
 }
 
-int do_whoami(const string& name, const int sock)
+int do_whoami(const string&, const int sock)
 {
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
@@ -449,6 +440,7 @@ void *recv_file(void *args)
     if (sock_new < 0)
     {
         write_message(sock, ERR_TRANSFER);
+        pthread_exit(0);
         return NULL;
     }
 
@@ -459,6 +451,7 @@ void *recv_file(void *args)
     if (inet_pton(AF_INET, "127.0.0.1", &s_addr.sin_addr) < 0)
     {
         write_message(sock, ERR_TRANSFER);
+        pthread_exit(0);
         return NULL;
     }
     // CONNECTION
@@ -469,6 +462,7 @@ void *recv_file(void *args)
         if ((clock() - timeStart) / CLOCKS_PER_SEC >= 20) // time in seconds
         {
             write_message(sock, ERR_TRANSFER);
+            pthread_exit(0);
             return NULL;
         }
     }
@@ -479,6 +473,7 @@ void *recv_file(void *args)
     {
         write_message(sock, ERR_TRANSFER);
         close(sock_new);
+        pthread_exit(0);
         return NULL;
     }
     else
@@ -487,13 +482,14 @@ void *recv_file(void *args)
         int f_block_sz = 0;
         int total_size_recv = 0;
         int to_be_transferred = filesize;
-        while (f_block_sz = recv(sock_new, revbuf, 1024, 0))
+        while ((f_block_sz = recv(sock_new, revbuf, 1024, 0)))
         {
             if (f_block_sz < 0)
             {
                 write_message(sock, ERR_TRANSFER);
                 fclose(fp);
                 close(sock_new);
+                pthread_exit(0);
                 return NULL;
             }
             total_size_recv += f_block_sz;
@@ -505,6 +501,7 @@ void *recv_file(void *args)
                     write_message(sock, ERR_TRANSFER);
                     fclose(fp);
                     close(sock_new);
+                    pthread_exit(0);
                     return NULL;
                 }
                 to_be_transferred -= f_block_sz;
@@ -517,6 +514,7 @@ void *recv_file(void *args)
                     write_message(sock, ERR_TRANSFER);
                     fclose(fp);
                     close(sock_new);
+                    pthread_exit(0);
                     return NULL;
                 }
                 to_be_transferred = 0;
@@ -531,37 +529,44 @@ void *recv_file(void *args)
         {
             write_message(sock, ERR_TRANSFER);
             close(sock_new);
+            pthread_exit(0);
             return NULL;
         }
     }
     // the transfer was a success
     write(sock, "", sizeof(""));
     close(sock_new);
+    pthread_exit(0);
+    return NULL;
 }
 
-int do_put(vector<string> name, int sock)
+int do_put(const string& name, const int sock)
 {
-    const char *filename = name[1].c_str();
-    int filesize = atoi(name[2].c_str());
-    char res[1024];
+    string input(name);
+    istringstream buffer(input);
+
+    vector<string> tokens{istream_iterator<string>(buffer), istream_iterator<string>()};
+
+    const char *filename = tokens[0].c_str();
+    int filesize = atoi(tokens[1].c_str());
 
     // check if the user is allowed to execute the command
     if (!check_authentication(sock))
     {
-        write_message(sock, ISSUE_LOGIN_MES);
+        write_message(sock, ERR_ACCESS_DENIED);
         return 1;
     }
 
     // check if the filepath is not too long
     if (strlen(filename) > 128)
     {
-        write_message(sock, ERR_PATH_TOO_LONG);
+        write_message(sock, ERR_PATH_LONG);
         return 1;
     }
 
     pthread_t t;
 
-    int port = PORT++;
+    int port = TRANSFER_PORT++;
     struct args_getput *args = (struct args_getput *)malloc(sizeof(struct args_getput));
     args->sock = sock;
     args->filesize = filesize;
@@ -592,6 +597,7 @@ void *send_file(void *args)
     if (fp == NULL)
     {
         write_message(sock, ERR_FILE_NOT_FOUND);
+        pthread_exit(0);
         return NULL;
     }
     fseek(fp, 0, SEEK_END);
@@ -605,6 +611,7 @@ void *send_file(void *args)
     if (sock_get < 0)
     {
         write_message(sock, ERR_TRANSFER);
+        pthread_exit(0);
         return NULL;
     }
 
@@ -618,6 +625,7 @@ void *send_file(void *args)
     {
         write_message(sock, ERR_TRANSFER);
         close(sock_get);
+        pthread_exit(0);
         return NULL;
     }
 
@@ -626,6 +634,7 @@ void *send_file(void *args)
     {
         write_message(sock, ERR_TRANSFER);
         close(sock_get);
+        pthread_exit(0);
         return NULL;
     }
 
@@ -645,6 +654,7 @@ void *send_file(void *args)
         write_message(sock, ERR_TRANSFER);
         close(sock_get);
         close(sock_new);
+        pthread_exit(0);
         return NULL;
     }
 
@@ -665,21 +675,22 @@ void *send_file(void *args)
     write(sock, "", sizeof(""));
     close(sock_new);
     close(sock_get);
+    pthread_exit(0);
+    return NULL;
 }
 
-int do_get(vector<string> name, int sock)
+int do_get(const string& name, const int sock)
 {
-    const char *filename = name[1].c_str();
-    char res[1024];
+    const char *filename = name.c_str();
 
     // check if the user is allowed to execute the command
     if (!check_authentication(sock))
     {
-        write_message(sock, ISSUE_LOGIN_MES);
+        write_message(sock, ERR_ACCESS_DENIED);
         return 1;
     }
 
-    int port = PORT++;
+    int port = TRANSFER_PORT++;
 
     pthread_t t;
 
@@ -773,17 +784,6 @@ void *connection_handler(void *sockfd)
     pthread_exit(0);
 }
 
-/*
- * search all files in the current directory
- * and its subdirectory for the pattern
- *
- * pattern: an extended regular expressions.
- * Output: A line seperated list of matching files' addresses
- */
-void search(char *pattern)
-{
-    // TODO
-}
 
 // Parse the grass.conf file and fill in the global variables
 void parse_grass()

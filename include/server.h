@@ -1,10 +1,11 @@
 #ifndef SERVER_H
 #define SERVER_H
 
+#include <grass.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include <grass.h>
 #include <string>
 using namespace std;
 
@@ -14,6 +15,16 @@ using namespace std;
 #define UNKNOWN_PATH 0
 
 const string server_ip = "127.0.0.1";
+
+int TRANSFER_PORT = 31337;
+
+struct args_getput
+{
+    int sock;
+    int filesize;
+    const char *filename;
+    int port;
+};
 
 struct User
 {
@@ -41,8 +52,8 @@ int do_ls(const string&, const int);
 int do_cd(const string&, const int);
 int do_mkdir(const string&, const int);
 int do_rm(const string&, const int);
-//int do_get(const string&, const int);
-//int do_put(const string&, const int);
+int do_get(const string&, const int);
+int do_put(const string&, const int);
 int do_grep(const string&, const int);
 int do_date(const string&, const int);
 int do_whoami(const string&, const int);
@@ -58,8 +69,8 @@ struct shell_map shell_cmds[NB_COMMANDS] = {
     {"cd", do_cd, 1},
     {"mkdir", do_mkdir, 1},
     {"rm", do_rm, 1},
-    // {"get", do_get, 1},
-    // {"put", do_put, 2},
+    {"get", do_get, 1},
+    {"put", do_put, 2},
     {"grep", do_grep, 1},
     {"date", do_date, 0},
     {"whoami", do_whoami, 0},
