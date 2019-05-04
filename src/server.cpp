@@ -110,16 +110,6 @@ void run_command(const char *command, int sock)
     write(sock, result, sizeof(result));
 }
 
-/*
- * Send a file to the client as its own thread
- *
- * fp: file descriptor of file to send
- * sock: socket that has already been created.
- */
-void send_file(int fp, int sock)
-{
-}
-
 int do_login(vector<string> name, int sock)
 {
     char res[1024];
@@ -444,7 +434,7 @@ int do_whoami(vector<string> name, int sock)
 }
 
 /*
- * Send a file to the server as its own thread
+ * Receive a file from the client as its own thread
  *
  */
 void *recv_file(void *args)
@@ -541,7 +531,6 @@ void *recv_file(void *args)
                 int write_sz = fwrite(revbuf, sizeof(char), to_be_transferred, fp);
                 if (write_sz < to_be_transferred)
                 {
-                    printf("check2\n");
                     strcpy(res, ERR_TRANSFER);
                     write(sock, res, sizeof(res));
                     fclose(fp);
@@ -558,14 +547,13 @@ void *recv_file(void *args)
         // if the transferred stream’s size doesn’t match with the specified size
         if (total_size_recv != filesize)
         {
-            printf("file transfer failed\n");
             strcpy(res, ERR_TRANSFER);
             write(sock, res, sizeof(res));
             close(sock_new);
             return NULL;
         }
     }
-
+    // the transfer was a success
     write(sock, "", sizeof(""));
     close(sock_new);
 }
@@ -594,12 +582,12 @@ int do_put(vector<string> name, int sock)
 
     pthread_t t;
 
-    PORT++;
+    int port = PORT++;
     struct args_getput *args = (struct args_getput *)malloc(sizeof(struct args_getput));
     args->sock = sock;
     args->filesize = filesize;
     args->filename = filename;
-    args->port = PORT;
+    args->port = port;
 
     if (pthread_create(&t, NULL, recv_file, (void *)args) != 0)
     {
@@ -704,7 +692,8 @@ void *send_file(void *args)
         }
         bzero(sdbuf, 1024);
     }
-    write(sock, "", sizeof("")); // notify the client that the transfer is successfull
+    // the transfer is a success
+    write(sock, "", sizeof(""));
     close(sock_new);
     close(sock_get);
 }
@@ -730,7 +719,7 @@ int do_get(vector<string> name, int sock)
         return 1;
     }
 
-    int port = ++PORT;
+    int port = PORT++;
 
     pthread_t t;
 
