@@ -100,6 +100,7 @@ int do_pass(const string& name, const int sock)
         }
         // wrong password
         else {
+            active_Users.erase(sock);
             write_message(sock, ERR_AUTH_FAIL);
         }
     }
