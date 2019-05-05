@@ -16,7 +16,7 @@ $(BINDIR)/client: $(SRCDIR)/client.cpp $(BINDIR)
 	$(CXX) $(CFLAGS) $< -o $@
 
 $(BINDIR)/server: $(SRCDIR)/server.cpp $(BINDIR)
-	$(CXX) $(CFLAGS) $< -o $@
+	$(CXX) $(CFLAGS) $< $(SRCDIR)/grass.cpp -o $@
 
 .PHONY: clean
 clean:

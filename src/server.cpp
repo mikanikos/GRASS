@@ -100,6 +100,7 @@ int do_pass(const string& name, const int sock)
         }
         // wrong password
         else {
+            active_Users.erase(sock);
             write_message(sock, ERR_AUTH_FAIL);
         }
     }
@@ -163,7 +164,7 @@ int do_logout(const string&, const int sock)
 int do_ping(const string& name, const int sock)
 {
     // validate argument
-    if (name.find_first_not_of("0123456789qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM.- ") != std::string::npos) { 
+    if (name.find_first_of("&|/,") != std::string::npos) { 
         write_message(sock, ERR_WRONG_PARAM);
         return 1;
     }
@@ -262,6 +263,9 @@ int do_cd(const string& name, const int sock)
 
 int do_mkdir(const string& name, const int sock)
 {
+    char buff[20];
+
+
     // check if the user is allowed to execute the command
     if (!check_authentication(sock)) {
         active_Users.erase(sock);
@@ -285,15 +289,18 @@ int do_mkdir(const string& name, const int sock)
     {
         string parent_path = nname;
 
-        while (parent_path.back() == '\\' || parent_path.back() == '/') {
+        while (parent_path.back() == '/') {
             parent_path = parent_path.substr(0, parent_path.size()-1);
         }
 
-        size_t pos = parent_path.find_last_of("/\\");
+        size_t pos = parent_path.find_last_of("/");
         
         if (pos != string::npos) {
             parent_path = parent_path.substr(0, pos).c_str();
             
+            printf("%d %s\n", strlen(parent_path.c_str()), parent_path.c_str());
+            strcpy(buff, parent_path.c_str());
+
             // check permission of path
             if (strstr(realpath(parent_path.c_str(), NULL), curr_dir.c_str()) == NULL) {
                 write_message(sock, ERR_ACCESS_DENIED);
@@ -715,8 +722,12 @@ void handle_input(const char *command, const int sock)
     vector<string> tokens{istream_iterator<string>(buffer), istream_iterator<string>()};
 
     wordexp_t p;
-    p.we_wordc = 0;
-    wordexp(command, &p, 0);
+    p.we_wordc = 2;
+
+    if (tokens[0] != shell_cmds[2].name) {
+        p.we_wordc = 0;
+        wordexp(command, &p, 0);
+    }
 
     if (tokens.size() == 0)
     {
