@@ -13,7 +13,7 @@ $(BINDIR):
 	mkdir -p $(BINDIR)
 
 $(BINDIR)/client: $(SRCDIR)/client.cpp $(BINDIR)
-	$(CXX) $(CFLAGS) $< -o $@
+	$(CXX) $(CFLAGS) $< $(SRCDIR)/grass.cpp -o $@
 
 $(BINDIR)/server: $(SRCDIR)/server.cpp $(BINDIR)
 	$(CXX) $(CFLAGS) $< $(SRCDIR)/grass.cpp -o $@

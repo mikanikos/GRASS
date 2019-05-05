@@ -255,11 +255,17 @@ int do_cd(const string& name, const int sock)
             write_message(sock, ("cd: " + name + ": Not a directory\n").c_str());
         }
         else {
-            write_message(sock, ("cd: " + name + ": No such file or directory\n").c_str());
+            char buff[256] = "";
+            strcat(buff, "cd: ");
+            strcat(buff, name.c_str());
+            strcat(buff, ": No such file or directory\n");
+            write_message(sock, buff);
+            printf(buff);
         }
     }
     return 0;
 }
+
 
 int do_mkdir(const string& name, const int sock)
 {
